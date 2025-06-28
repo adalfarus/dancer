@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+#[tool.setuptools]
+#packages = [
+#  "dancer",
+#]
+#include-package-data = true
+#package-dir = {"" = "src"}
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+#[tool.setuptools.package-data]
+#"aplustools.security.dicts" = [
+#  "somefile.txt",
+#]
+
+[project]
+name = "dancer"
+version = "0.0.0.1a1"
+dependencies = ["packaging", "typing_extensions"]
+requires-python = ">= 3.10"
+authors = [
+  {name = "Cariel Becker", email = "cariel.becker@gmx.de"},
+]
+maintainers = [
+  {name = "Cariel Becker", email = "cariel.becker@gmx.de"},
+]
+description = "An app framework"
+readme = {file = "README.md", content-type = "text/markdown"}
+license = "LGPL-2.1-or-later"
+keywords = ["general", "tools", "app tools", "production", "apt"]
+classifiers = [
+	"Development Status :: 1 - Planning",
+	"Programming Language :: Python",
+	"Natural Language :: English"
+]
+
+[project.optional-dependencies]
+qt = ["PySide6>=6.7.0", "aplustools[all]>=2.0.0.0b1"]
+tkinter = []
+dev = ["pytest"]
+
+[project.urls]
+Home = "https://pypi.org/project/dancer/"
+Repository = "https://github.com/adalfarus/dancer"
+Documentation = "https://github.com/adalfarus/dancer/wiki"
+"Issue tracker" = "https://github.com/adalfarus/dancer/issues"
+
+#[tool.pytest.ini_options]
+## This is equivalent to setup_requires and tests_require
+## Add your pytest configuration here
+#addopts = "your pytest options"
