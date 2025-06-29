@@ -1,5 +1,6 @@
 """Dancer"""
 from . import config
+from .io import IOManager, ActLogger
 from argparse import ArgumentParser as _Ag, Namespace as _Ns
 from traceback import format_exc
 import logging
@@ -18,11 +19,99 @@ class Frontend:
 
 class MainClass(_ty.Protocol):
     """The main class that gets executed."""
-    def __init__(self, parsed_args: _Ns, logging_mode: int) -> None: ...
+    def __init__(self, parsed_args: _Ns, logging_level: int) -> None: ...
     def exec(self) -> int: ...
     def close(self) -> None: ...
 
-def start(frontend: Frontend, main_class: _ty.Type[MainClass], arg_parser: _Ag | None = None, EXIT_CODES: dict[int, _a.Callable[[], None]] | None = None) -> None:
+class DefaultTUIApp(MainClass):
+    def __init__(self, log_filepath: str, parsed_args: _Ns, logging_level: int) -> None:
+        try:
+            # Setup ActLogger
+            self.logger: ActLogger = ActLogger(log_to_file=True, filepath=log_filepath)
+            sys.stdout = self.logger.create_pipe_redirect(sys.stdout, level=logging.DEBUG)
+            sys.stderr = self.logger.create_pipe_redirect(sys.stderr, level=logging.ERROR)
+            if logging_level:
+                mode = getattr(logging, logging.getLevelName(logging_level).upper())
+            else:
+                mode = logging.INFO
+            # if mode is not None:
+            #     self.logger.setLevel(mode)
+            for exported_line in config.exported_logs.split("\n"):
+                self.logger.debug(exported_line)  # Flush config prints
+
+            # self.system = System()
+        except Exception as e:
+            self.close()
+            raise Exception("Exception occurred during initialization of the Main class") from e
+
+    def close(self) -> None:
+        sys.stdout = self.logger.restore_pipe(sys.stdout)
+        sys.stderr = self.logger.restore_pipe(sys.stderr)
+
+class DefaultGUIApp(MainClass):
+    def __init__(self, parsed_args: _Ns, logging_level: int) -> None:
+        try:
+            # Setup IOManager
+            self.io_manager: IOManager = IOManager()
+            self.io_manager.init(self.button_popup, f"{self.data_folder}/logs", config.INDEV)
+            if logging_level:
+                mode = getattr(logging, logging.getLevelName(logging_level).upper())
+            else:
+                mode = logging.INFO
+            if mode is not None:
+                self.io_manager.set_logging_level(mode)
+            for exported_line in config.exported_logs.split("\n"):
+                self.io_manager.debug(exported_line)  # Flush config prints
+
+            self.system = System()
+            self.os_theme = self.system.get_windows_theme() or os.environ.get("DANCER_THEME") or "light"
+            self.theme = None
+            self.update_theme(self.os_theme.lower())
+            self.check_for_update()
+        except Exception as e:
+            self.close()
+            raise Exception("Exception occurred during initialization of the Main class") from e
+
+    def button_popup(self, title: str, text: str, description: str,
+                     icon: _ty.Literal["Information", "Critical", "Question", "Warning", "NoIcon"],
+                     buttons: list[str], default_button: str, checkbox: str | None = None) -> tuple[str | None, bool]:
+        if checkbox is not None:
+            checkbox = QCheckBox(checkbox)
+        msg_box = QQuickMessageBox(self, getattr(QMessageBox.Icon, icon), title, text,
+                                   checkbox=checkbox, standard_buttons=None, default_button=None)
+        button_map: dict[str, QPushButton] = {}
+        for button_str in buttons:
+            button = QPushButton(button_str)
+            button_map[button_str] = button
+            msg_box.addButton(button, QMessageBox.ButtonRole.ActionRole)
+        custom_button = button_map.get(default_button)
+        if custom_button is not None:
+            msg_box.setDefaultButton(custom_button)
+        msg_box.setDetailedText(description)
+
+        clicked_button: int = msg_box.exec()
+
+        checkbox_checked = False
+        if checkbox is not None:
+            checkbox_checked = checkbox.isChecked()
+
+        for button_text, button_obj in button_map.items():
+            if msg_box.clickedButton() == button_obj:
+                return button_text, checkbox_checked
+        return None, checkbox_checked
+
+    def check_for_update(self) -> None:
+        ...
+
+    def set_theme(self) -> None:
+        raise NotImplementedError()
+
+    def update_theme(self, new_theme: str) -> None:
+        self.os_theme = new_theme
+        self.set_theme()
+
+
+def start(frontend: int, main_class: _ty.Type[MainClass], arg_parser: _Ag | None = None, EXIT_CODES: dict[int, _a.Callable[[], None]] | None = None) -> None:
     """Starts the app and handles error catching"""
     if EXIT_CODES is None:
         EXIT_CODES = {
@@ -85,7 +174,7 @@ def start(frontend: Frontend, main_class: _ty.Type[MainClass], arg_parser: _Ag |
 
         if frontend == Frontend.TUI:
             print(f"--- {error_title} ---\n{error_text} Do you want to restart the app?")
-            inp: str = input("[Y]/n\n> ")
+            inp: str = input("[Y]/n\n> ") or "y"
             if inp.upper() == "Y":
                 current_exit_code = 1000
         elif frontend == Frontend.QT:
