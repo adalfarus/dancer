@@ -5,6 +5,9 @@ import shutil
 import sys
 import os
 
+import typing as _ty
+_DirectoryTree = dict[str, _ty.Union["DirectoryTree", None]]
+
 INDEV: bool = False
 INDEV_KEEP_RUNTIME_FILES: bool = True
 PROGRAM_NAME: str = "ContentView"
@@ -13,7 +16,7 @@ VERSION_ADD: str = "a0"
 PROGRAM_NAME_NORMALIZED: str = f"{PROGRAM_NAME.lower().replace(' ', '_')}_{VERSION}{VERSION_ADD}"
 OS_LIST: dict[str, dict[str, tuple[str, ...]]] = {"Windows": {"10": ("any",), "11": ("any",)}}
 PY_LIST: list[tuple[int, int]] = [(3, 10), (3, 11), (3, 12), (3, 13)]
-DIR_STRUCTURE: tuple[tuple[str, tuple[str, ...]]]
+DIR_STRUCTURE: _DirectoryTree
 LOCAL_MODULE_LOCATIONS: list[str]
 
 OLD_CWD: str = os.getcwd()
@@ -39,6 +42,9 @@ def is_compiled() -> bool:
     """
     return getattr(sys, "frozen", False) and (hasattr(sys, "_MEIPASS") or sys.executable.endswith(".exe"))
 
+def get_version_str() -> str:
+    return str(VERSION) + VERSION_ADD
+
 def _configure() -> dict[str, str]:
     if is_compiled():
         os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -48,7 +54,7 @@ def _configure() -> dict[str, str]:
             sys.stderr = open(os.devnull, "w")
     accumulated_logs = "Starting cloning of defaults ...\n"
     old_cwd = os.getcwd()
-    install_dir = os.path.join(old_cwd, "default-config")
+    install_dir = os.path.join(old_cwd, "default-config")  # TODO: Use systems stuff
     base_app_dir = os.path.join(os.environ.get("LOCALAPPDATA", "."), PROGRAM_NAME_NORMALIZED)
 
     if INDEV and os.path.exists(base_app_dir):  # Remove everything to simulate a fresh install
@@ -67,21 +73,28 @@ def _configure() -> dict[str, str]:
 
     dirs_to_create = []
     # Use a stack to iteratively traverse the directory structure
-    stack: list[tuple[str, tuple[str, ...] | tuple]] = [(base_app_dir, item) for item in DIR_STRUCTURE]
+    stack: list[tuple[str, _DirectoryTree]] = [(base_app_dir, DIR_STRUCTURE)]
     while stack:
-        base_path, (dir_name, subdirs) = stack.pop()
-        current_path = os.path.join(base_path, dir_name)
-
-        if not subdirs:  # No subdirectories; it's a leaf
+        current_base, subtree = stack.pop()
+        for name, children in subtree.items():
+            current_path = os.path.join(current_base, name)
             dirs_to_create.append(current_path)
             accumulated_logs += f"Cloning {current_path}\n"
-        else:
-            for subdir in subdirs:  # Add each subdirectory to the stack for further processing
-                if isinstance(subdir, tuple):
-                    stack.append((current_path, subdir))  # Nested structure
-                else:  # Direct leaf under the current directory
-                    dirs_to_create.append(os.path.join(current_path, subdir))
-                    accumulated_logs += f"Cloning {os.path.join(current_path, subdir)}\n"
+            if isinstance(children, dict) and children:
+                stack.append((current_path, children))
+        # base_path, (dir_name, subdirs) = stack.pop()
+        # current_path = os.path.join(base_path, dir_name)
+        #
+        # if not subdirs:  # No subdirectories; it's a leaf
+        #     dirs_to_create.append(current_path)
+        #     accumulated_logs += f"Cloning {current_path}\n"
+        # else:
+        #     for subdir in subdirs:  # Add each subdirectory to the stack for further processing
+        #         if isinstance(subdir, tuple):
+        #             stack.append((current_path, subdir))  # Nested structure
+        #         else:  # Direct leaf under the current directory
+        #             dirs_to_create.append(os.path.join(current_path, subdir))
+        #             accumulated_logs += f"Cloning {os.path.join(current_path, subdir)}\n"
     for dir_to_create in dirs_to_create:
         os.makedirs(dir_to_create, exist_ok=True)
     for loc in LOCAL_MODULE_LOCATIONS:
@@ -115,7 +128,7 @@ class AppInfo:
     VERSION_ADD: str
     OS_LIST: dict[str, dict[str, tuple[str, ...]]]
     PY_LIST: list[tuple[int, int]]
-    DIR_STRUCTURE: tuple[tuple[str, tuple[str, ...]]]
+    DIR_STRUCTURE: _DirectoryTree
     LOCAL_MODULE_LOCATIONS: list[str]
 
 def configure(app_info: AppInfo) -> None:

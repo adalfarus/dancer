@@ -4,9 +4,11 @@ from logging import ERROR, WARNING, INFO, DEBUG
 import logging as _logging
 import threading
 from queue import Queue
+from enum import Enum as _Enum
 import sys as _sys
 import abc as _abc
 import re
+import io
 
 # Standard typing imports for aps
 import collections.abc as _a
@@ -14,6 +16,7 @@ import typing as _ty
 import types as _ts
 
 
+# Copyright adalfarus
 class SingletonMeta(type):
     """
     Metaclass to make UnifiedRequestHandlerAdvanced a Singleton.
@@ -26,8 +29,9 @@ class SingletonMeta(type):
             cls._instances[cls] = instance
         return cls._instances[cls]
 
+# Copyright adalfarus
 # Helper class to redirect streams to the logger
-class _StreamToLogger:
+class _StreamToLogger(io.IOBase):
     """
     File-like object that redirects writes to a logger instance.
     """
@@ -67,20 +71,7 @@ class _StreamToLogger:
             self.logger.log(self.log_level, self.linebuf.rstrip())
             self.linebuf = ""
 
-    def restore(self):
-        """Restore the original stream (stdout/stderr/other)"""
-        return self.original_stream
-
-    def isatty(self) -> bool:
-        return False
-
-    def fileno(self):
-        raise OSError("Redirected stream does not have a file descriptor")
-
-    @property
-    def encoding(self) -> str:
-        return getattr(self.original_stream, "encoding", "utf-8")
-
+# Copyright adalfarus
 class ActLogger(metaclass=SingletonMeta):
     """
     A configurable logger for ActFramework that supports logging to both the console
@@ -160,6 +151,10 @@ class ActLogger(metaclass=SingletonMeta):
         :param replacement: The _StreamToLogger that was used to override it.
         """
         return replacement.restore()
+
+    def add_handler(self, mirror_to_io: io.IOBase) -> None:
+        self.handlers.append(mirror_to_io)
+        self._logger.addHandler(mirror_to_io)
 
     def log(self, level: int, message: str) -> None:
         """Log a message with a specific logging level."""
@@ -422,7 +417,7 @@ class IOManager(metaclass=SingletonMeta):
         """
         return len(self._popup_queue) > 0
 
-    def invoke_popup(self) -> None:
+    def invoke_prompts(self) -> None:
         """
 
         :return:
@@ -435,15 +430,15 @@ class IOManager(metaclass=SingletonMeta):
 
         popup_callable()
 
-    def init(self, popup_creation_callable: _ty.Callable, logs_folder_path: str, is_indev: bool) -> None:
+    def init(self, promt_creation_callable: _ty.Callable, logs_folder_path: str, is_indev: bool) -> None:
         """
         Initializes the ErrorCache with a popup creation callable and development mode flag.
-        :param popup_creation_callable: Callable used to create popups.
+        :param promt_creation_callable: Callable used to create popups.
         :param logs_folder_path: File path to the logs folder.
         :param is_indev: Boolean indicating whether the application is in development mode.
         :return: None
         """
-        self._button_display_callable.set_value(popup_creation_callable)
+        self._button_display_callable.set_value(promt_creation_callable)
         self._order_logs(logs_folder_path)
         self._logger = ActLogger(log_to_file=True, filepath=os.path.join(logs_folder_path, "latest.log"))
         self._logger.monitor_pipe(sys.stdout, level=logging.DEBUG)
@@ -516,15 +511,15 @@ class IOManager(metaclass=SingletonMeta):
         os.rename(to_log_file, new_log_file_name)
         print(f"Renamed latest.log to {new_log_file_name}")
 
-    def _show_dialog(self, title: str, text: str, description: str,
-                     icon: _ty.Literal["Information", "Critical", "Question", "Warning", "NoIcon"],
-                     custom_buttons: _ty.Dict[str, _ty.Callable] | None = None) -> None:
+    def _show_prompt(self, title: str, text: str, description: str,
+                     level: _ty.Literal["debug", "information", "question", "warning", "error"],
+                     custom_options: _ty.Dict[str, _ty.Callable] | None = None) -> None:
         """
         Displays a dialog box with the provided information.
         :param title: Title of the dialog box.
         :param text: Main text content of the dialog box.
         :param description: Additional description text.
-        :param icon: Type of icon to display in the dialog box.
+        :param level: Type of icon to display in the dialog box.
         :return: None
         """
         if text in self._currently_displayed:
@@ -563,58 +558,56 @@ class IOManager(metaclass=SingletonMeta):
             if button_name in custom_buttons:
                 custom_buttons[button_name]()
 
-    def _handle_dialog(self, show_dialog: bool, title: str, log_message: str, description: str,
-                       icon: _ty.Literal["Information", "Critical", "Question", "Warning", "NoIcon"],
-                       custom_buttons: _ty.Dict[str, _ty.Callable] | None = None) -> None:
+    def _handle_prompt(self, show_prompt: bool, title: str, log_message: str, description: str,
+                       level: _ty.Literal["debug", "information", "question", "warning", "error"],
+                       custom_options: _ty.Dict[str, _ty.Callable] | None = None) -> None:
         """
         Handles the process of displaying a dialog based on parameters.
-        :param show_dialog: Boolean indicating whether to show the dialog.
+        :param show_prompt: Boolean indicating whether to show the dialog.
         :param title: Title of the dialog.
         :param log_message: Log message associated with the dialog.
         :param description: Additional description text.
         :param icon: Type of icon to display in the dialog.
         :return: None
         """
-        if not show_dialog:
+        if not show_prompt:
             return
 
-        self._popup_queue.append(lambda: self._show_dialog(title, log_message, description, icon, custom_buttons))
+        self._popup_queue.append(lambda: self._show_prompt(title, log_message, description, icon, custom_options))
 
     # "Errors"
 
-    def warn(self, log_message: str, description: str = "", show_dialog: bool = False,
-             print_log: bool = True,
-             popup_title: str | None = None,
-             custom_buttons: _ty.Dict[str, _ty.Callable] | None = None) -> None:
+    def warn(self, log_message: str, description: str = "", show_prompt: bool = False,
+             print_log: bool = True, prompt_title: str | None = None,
+             custom_options: _ty.Dict[str, _ty.Callable] | None = None) -> None:
         """
         Logs a warning message and optionally displays a warning dialog.
-        :param popup_title: Sets the popup window title
-        :param custom_buttons: Defines additional buttons for the popup window
+        :param prompt_title: Sets the popup window title
+        :param custom_options: Defines additional buttons for the popup window
         :param log_message: The warning message to log.
         :param description: Additional description of the warning.
-        :param show_dialog: Whether to show a dialog for the warning.
+        :param show_prompt: Whether to show a dialog for the warning.
         :param print_log: Whether to print the log message.
         :return: None
         """
-        return self.warning(log_message, description, show_dialog, print_log, popup_title, custom_buttons)
+        return self.warning(log_message, description, show_prompt, print_log, prompt_title, custom_options)
 
-    def info(self, log_message: str, description: str = "", show_dialog: bool = False,
-             print_log: bool = True,
-             popup_title: str | None = None,
-             custom_buttons: _ty.Dict[str, _ty.Callable] | None = None) -> None:
+    def info(self, log_message: str, description: str = "", show_prompt: bool = False,
+             print_log: bool = True, prompt_title: str | None = None,
+             custom_options: _ty.Dict[str, _ty.Callable] | None = None) -> None:
         """
         Logs an informational message and optionally displays an information dialog.
         :param log_message: The informational message to log.
         :param description: Additional description of the information.
-        :param show_dialog: Whether to show a dialog for the information.
+        :param show_prompt: Whether to show a dialog for the information.
         :param print_log: Whether to print the log message.
-        :param popup_title: Sets the popup window title
-        :param custom_buttons: Defines additional buttons for the popup window
+        :param prompt_title: Sets the popup window title
+        :param custom_options: Defines additional buttons for the popup window
         :return: None
         """
         title: str = "Information"
-        if popup_title is not None:
-            title += f": {popup_title}"
+        if prompt_title is not None:
+            title += f": {prompt_title}"
 
         if print_log:
             self._logger.info(f"{log_message} {f'({description})' if description else ''}")
@@ -622,25 +615,24 @@ class IOManager(metaclass=SingletonMeta):
         if ActLogger().logging_level > INFO:
             return
 
-        self._handle_dialog(show_dialog, title, log_message, description, "Information", custom_buttons)
+        self._handle_prompt(show_prompt, title, log_message, description, "Information", custom_options)
 
-    def warning(self, log_message: str, description: str = "", show_dialog: bool = False,
-                print_log: bool = True,
-                popup_title: str | None = None,
-                custom_buttons: _ty.Dict[str, _ty.Callable] | None = None) -> None:
+    def warning(self, log_message: str, description: str = "", show_prompt: bool = False,
+                print_log: bool = True, prompt_title: str | None = None,
+                custom_options: _ty.Dict[str, _ty.Callable] | None = None) -> None:
         """
         Logs a warning message and optionally displays a warning dialog.
         :param log_message: The warning message to log.
         :param description: Additional description of the warning.
-        :param show_dialog: Whether to show a dialog for the warning.
+        :param show_prompt: Whether to show a dialog for the warning.
         :param print_log: Whether to print the log message.
-        :param popup_title: Sets the popup window title
-        :param custom_buttons: Defines additional buttons for the popup window
+        :param prompt_title: Sets the popup window title
+        :param custom_options: Defines additional buttons for the popup window
         :return: None
         """
         title: str = "Warning"
-        if popup_title is not None:
-            title += f": {popup_title}"
+        if prompt_title is not None:
+            title += f": {prompt_title}"
 
         if print_log:
             self._logger.warning(f"{log_message} {f'({description})' if description else ''}")
@@ -648,43 +640,41 @@ class IOManager(metaclass=SingletonMeta):
         if ActLogger().logging_level > WARNING:
             return
 
-        self._handle_dialog(show_dialog, title, log_message, description, "Warning", custom_buttons)
+        self._handle_prompt(show_prompt, title, log_message, description, "Warning", custom_options)
 
-    def fatal_error(self, log_message: str, description: str = "", show_dialog: bool = False,
-              print_log: bool = True,
-              popup_title: str | None = None,
-              custom_buttons: _ty.Dict[str, _ty.Callable] | None = None) -> None:
+    def fatal_error(self, log_message: str, description: str = "", show_prompt: bool = False,
+                    print_log: bool = True, prompt_title: str | None = None,
+                    custom_options: _ty.Dict[str, _ty.Callable] | None = None) -> None:
         """
         Logs a fatal error message and optionally displays an error dialog.
         :param log_message: The error message to log.
         :param description: Additional description of the error.
-        :param show_dialog: Whether to show a dialog for the error.
+        :param show_prompt: Whether to show a dialog for the error.
         :param print_log: Whether to print the log message.
-        :param popup_title: Sets the popup window title
-        :param custom_buttons: Defines additional buttons for the popup window
+        :param prompt_title: Sets the popup window title
+        :param custom_options: Defines additional buttons for the popup window
         :return: None
         """
-        self.error(log_message, description, show_dialog, print_log, popup_title, custom_buttons, error_severity="FATAL")
+        self.error(log_message, description, show_prompt, print_log, prompt_title, custom_options, error_severity="FATAL")
 
-    def error(self, log_message: str, description: str = "", show_dialog: bool = False,
-              print_log: bool = True,
-              popup_title: str | None = None,
-              custom_buttons: _ty.Dict[str, _ty.Callable] | None = None, *_,
+    def error(self, log_message: str, description: str = "", show_prompt: bool = False,
+              print_log: bool = True, prompt_title: str | None = None,
+              custom_options: _ty.Dict[str, _ty.Callable] | None = None, *_,
               error_severity: str = "NORMAL") -> None:
         """
         Logs an error message and optionally displays an error dialog.
         :param log_message: The error message to log.
         :param description: Additional description of the error.
-        :param show_dialog: Whether to show a dialog for the error.
+        :param show_prompt: Whether to show a dialog for the error.
         :param print_log: Whether to print the log message.
-        :param popup_title: Sets the popup window title
-        :param custom_buttons: Defines additional buttons for the popup window
+        :param prompt_title: Sets the popup window title
+        :param custom_options: Defines additional buttons for the popup window
         :param error_severity: Defined a custom error name.
         :return: None
         """
         title: str = f"{str(error_severity).capitalize()} Error"
-        if popup_title is not None:
-            title += f": {popup_title}"
+        if prompt_title is not None:
+            title += f": {prompt_title}"
 
         if print_log:
             self._logger.error(f"{str(error_severity)}: {log_message} {f'({description})' if description else ''}")
@@ -692,20 +682,19 @@ class IOManager(metaclass=SingletonMeta):
         if ActLogger().logging_level > ERROR:
             return
 
-        self._handle_dialog(show_dialog, title, log_message, description, "Critical", custom_buttons)
+        self._handle_prompt(show_prompt, title, log_message, description, "Critical", custom_options)
 
-    def debug(self, log_message: str, description: str = "", show_dialog: bool = False,
-              print_log: bool = True,
-              popup_title: str | None = None,
-              custom_buttons: _ty.Dict[str, _ty.Callable] | None = None) -> None:
+    def debug(self, log_message: str, description: str = "", show_prompt: bool = False,
+              print_log: bool = True, prompt_title: str | None = None,
+              custom_options: _ty.Dict[str, _ty.Callable] | None = None) -> None:
         """
         Logs a debug message and optionally displays a debug dialog, only if in development mode.
         :param log_message: The debug message to log.
         :param description: Additional description of the debug information.
-        :param show_dialog: Whether to show a dialog for the debug information.
+        :param show_prompt: Whether to show a dialog for the debug information.
         :param print_log: Whether to print the log message.
-        :param popup_title: Sets the popup window title
-        :param custom_buttons: Defines additional buttons for the popup window
+        :param prompt_title: Sets the popup window title
+        :param custom_options: Defines additional buttons for the popup window
         :return: None
         """
         if not self._is_indev.has_value():
@@ -716,8 +705,8 @@ class IOManager(metaclass=SingletonMeta):
             return
 
         title: str = "Debug"
-        if popup_title is not None:
-            title += f": {popup_title}"
+        if prompt_title is not None:
+            title += f": {prompt_title}"
 
         if print_log:
             self._logger.debug(f"{log_message} {f'({description})' if description else ''}")
@@ -725,4 +714,23 @@ class IOManager(metaclass=SingletonMeta):
         if ActLogger().logging_level > DEBUG:
             return
 
-        self._handle_dialog(show_dialog, title, log_message, description, "NoIcon", custom_buttons)
+        self._handle_prompt(show_prompt, title, log_message, description, "NoIcon", custom_options)
+
+    def prompt_user(self, title: str, message: str, details: str,
+                    level: _ty.Literal["debug", "information", "question", "warning", "error"],
+                    options: list[str], default_option: str, checkbox_label: str | None = None,
+                    return_type: _ty.Literal["thread", "proc"] = "thread"):  # -> tuple[SafeList, Event]:
+        raise NotImplementedError("The current implementation does not support user prompting with arbitrary data.")
+
+class SystemTheme(_Enum):
+    """Used to make system theme information standardized"""
+    LIGHT = 2
+    DARK = 1
+    UNKNOWN = 0
+
+class BaseSystemType():
+    ...
+
+# Copyright adalfarus
+def get_system():
+    ...
