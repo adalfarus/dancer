@@ -19,11 +19,6 @@ __all__ = ["config", "io", "start", "Frontend", "UpdateResult", "UpdateChecker",
 __version__ = "0.0.0.1a1"
 
 
-class Frontend:
-    """Different frontends"""
-    TUI = 0
-    GUI = 1
-
 @_dataclass  # TODO:
 class UpdateResult:
     ...
@@ -446,7 +441,7 @@ class DefaultAppGUI(DefaultApp):
             self.update_theme(new_theme)
         self.io_manager.invoke_prompts()
 
-def start(frontend: int, main_class: _ty.Type[MainClass], arg_parser: _Ag | None = None, EXIT_CODES: dict[int, _a.Callable[[], None]] | None = None) -> None:
+def start(main_class: _ty.Type[MainClass], arg_parser: _Ag | None = None, EXIT_CODES: dict[int, _a.Callable[[], None]] | None = None) -> None:
     """Starts the app and handles error catching"""
     if EXIT_CODES is None:
         EXIT_CODES = {
