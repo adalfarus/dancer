@@ -7,6 +7,7 @@ from argparse import Namespace as _Ns
 import sys
 
 from . import DefaultAppGUI as _DefaultGUIApp
+from .qts import assign_object_names_iterative, AbstractMainWindow, AppStyle, Style, Theme
 
 __all__ = ["QQuickMessageBox", "QBoxDirection", "QNoSpacingBoxLayout", "QtTimidTimer", "DefaultAppGUIQt"]
 
@@ -153,6 +154,17 @@ class QtAppSettings(_QObject):
 
     # Settings Signals
     test_setting_changed = _Signal(str)
+    # general
+    app_language_changed = _Signal(str)
+    window_geometry_changed = _Signal(tuple)  # tuple[int, int, int, int]
+    save_window_dimensions_changed = _Signal(bool)
+    save_window_position_changed = _Signal(bool)
+    # design
+    light_theming_changed = _Signal(str)
+    dark_theming_changed = _Signal(str)
+    font_changed = _Signal(str)
+    # advanced
+    logging_mode_changed = _Signal(str)
 
     def __new__(cls):
         if cls._instance is None:
@@ -171,7 +183,11 @@ class QtAppSettings(_QObject):
         if self.setup:  # Prevent reinitialization
             return
         # Do some stuff ...
+        self._set_default_settings()
         self.setup = True
+
+    def _set_default_settings(self) -> None:
+        raise NotImplementedError()
 
     def _retrieve(self, name: str) -> _ty.Any:
         raise NotImplementedError()
@@ -184,22 +200,69 @@ class QtAppSettings(_QObject):
     def set_test_setting(self, test_setting: str) -> None:
         self._store("test_setting", test_setting)
         self.test_setting_changed.emit(test_setting)
+    # general
+    def get_app_language(self) -> str:
+        return self._retrieve("app_language")
+    def set_app_language(self, app_language: str) -> None:
+        self._store("app_language", app_language)
+        self.app_language_changed.emit(app_language)
+    def get_window_geometry(self) -> tuple[int, int, int, int]:
+        return self._retrieve("window_geometry")  # type: ignore
+    def set_window_geometry(self, window_geometry: tuple[int, int, int, int]) -> None:
+        self._store("window_geometry", window_geometry)
+        self.window_geometry_changed.emit(window_geometry)
+    def get_save_window_dimensions(self) -> bool:
+        return self._retrieve("save_window_dimensions")  # type: ignore
+    def set_save_window_dimensions(self, flag: bool) -> None:
+        self._store("save_window_dimensions", flag)
+        self.save_window_dimensions_changed.emit(flag)
+    def get_save_window_position(self) -> bool:
+        return self._retrieve("save_window_position")  # type: ignore
+    def set_save_window_position(self, flag: bool) -> None:
+        self._store("save_window_position", flag)
+        self.save_window_position_changed.emit(flag)
+    # design
+    def get_theming(self, mode: SystemTheme) -> str:
+        theming_type: str = {SystemTheme.LIGHT: "light_theming",
+                             SystemTheme.DARK: "dark_theming"}[mode]
+        return self._retrieve(theming_type)
+    def set_theming(self, mode: SystemTheme, theming: str) -> None:
+        theming_type: str = {SystemTheme.LIGHT: "light_theming",
+                             SystemTheme.DARK: "dark_theming"}[mode]
+        self._store(theming_type, theming)
+        getattr(self, f"{theming_type}_changed").emit(theming)
+    def get_font(self) -> str:
+        return self._retrieve("font")
+    def set_font(self, font: str) -> None:
+        self._store("font", font)
+        self.font_changed.emit(font)
+    # advanced
+    def get_logging_mode(self) -> str:
+        return self._retrieve("logging_mode")
+    def set_logging_mode(self, logging_mode: str) -> None:
+        self._settings.store("logging_mode", logging_mode)
+        self.logging_mode_changed.emit(logging_mode)
 
 # TODO: Add theme stuff to qt app
 class DefaultAppGUIQt(_DefaultGUIApp):
-    def __init__(self, window, logs_directory: str, parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False) -> None:
+    def __init__(self, window: AbstractMainWindow, settings: QtAppSettings, themes_directory: str, styles_directory: str, logs_directory: str,
+                 parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False) -> None:
         super().__init__(logs_directory, parsed_args, logging_level, setup_thread_pool=setup_thread_pool)
 
-        self.window = window
+        self.window: AbstractMainWindow = window
+        self.settings: QtAppSettings = settings
 
         # Setup window
         self.system: BaseSystemType = get_system()
         self.os_theme: SystemTheme = self.get_os_theme()
         self.current_theming: str = ""
-        self.load_themes(os.path.join(self.styling_folder, "themes"))
-        self.load_styles(os.path.join(self.styling_folder, "styles"))
 
-        self.window.setup_gui(self.ui_automaton)
+        self.themes_directory: str = themes_directory
+        self.styles_directory: str = styles_directory
+        self.load_themes(self.themes_directory)
+        self.load_styles(self.styles_directory)
+
+        self.window.setup_gui()
 
         x, y, width, height = self.settings.get_window_geometry()
         if not self.settings.get_save_window_dimensions():
@@ -214,7 +277,7 @@ class DefaultAppGUIQt(_DefaultGUIApp):
         self.apply_theme()
 
         self.window.start()  # Shows gui
-        self.update_font()  # So that everything gets updated
+        self.window.set_font(self.settings.get_font())  # So that everything gets updated
 
         self.timer_number: int = 1
         self.timer: QtTimidTimer = QtTimidTimer()
@@ -313,7 +376,8 @@ class DefaultAppGUIQt(_DefaultGUIApp):
 
     def exec(self) -> int:
         self.qapp = _QtWidgets.QApplication(sys.argv)
-        self.window.show()
+        self.window.app = self.qapp
+        self.window.start()
         return self.qapp.exec()
 
     def crash(self, error_title: str, error_text: str, error_description: str) -> bool:

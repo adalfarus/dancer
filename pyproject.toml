@@ -15,10 +15,41 @@ include-package-data = true
 [tool.setuptools.packages.find]
 where = ["src"]
 
-#[tool.setuptools.package-data]
-#"aplustools.security.dicts" = [
-#  "somefile.txt",
-#]
+[tool.setuptools.package-data]
+"dancer._styling" = [
+    "colored_transcription_guide.qst",
+    "STYLING.md"
+]
+"dancer._styling.styles" = [
+    "base.qst",
+    "colored_cherry_blossom.qst",
+    "colored_evening_sky.qst",
+    "colored_red_rage.qst",
+    "colored_summer_sky.qst",
+    "default_dark.qst",
+    "default_light.qst",
+    "high_contrast.qst",
+    "thick_dark.qst",
+    "thick_light.qst",
+    "thin_dark.qst",
+    "thin_light.qst",
+    "thin_light_blue.qst",
+    "thin_light_burgundy.qst",
+    "thin_light_dark.qst",
+    "thin_light_green.qst",
+    "thin_light_purple.qst",
+]
+"dancer._styling.themes" = [
+    "adalfarus_base.qth",
+    "adalfarus_chisled.qth",
+    "adalfarus_default.qth",
+    "adalfarus_high_contrast.qth",
+    "adalfarus_modern.qth",
+    "adalfarus_thick.qth",
+    "adalfarus_thick_basic.qth",
+    "adalfarus_thin.qth",
+    "adalfarus_thin_basic.qth",
+]
 
 [project]
 name = "dancer"

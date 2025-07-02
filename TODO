@@ -1,9 +1,4 @@
 ADD OTHER ESSENTIAL STUFF FROM APLUSTOOLS2 Started
-MERGE AND FIX LOGGER -> MAKE IOMANAGER COMPATIBLE WITH FRONTENT (Meaning we completely merge the two, button_popup is then a popup for guis and an input for TUIs) DONE
-
-
 Asked for popup, add callback OR switch (that signal between threads / processes) LATER
 
-Finish transmigrating from Front.Qt and Front.Tkinter to Front.GUI DONE
-
-Rename the classes? No
+Add the styling to default Qt App

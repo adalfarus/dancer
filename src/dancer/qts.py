@@ -5,15 +5,16 @@ import re
 
 from PySide6.QtGui import QPalette, QColor
 from PySide6.QtCore import Qt, QObject
+from PySide6 import QtWidgets as _QtWidgets, QtGui as _QtGui, QtCore as _QtCore
 
 from aplustools.io.fileio import os_open
-
-from ._main import MainWindow
 
 # Standard typing imports for aps
 import collections.abc as _a
 import typing as _ty
 import types as _ts
+
+from ._known_styling import styles as known_styles, themes as known_themes
 
 
 def assign_object_names_iterative(parent: QObject, prefix: str = "", exclude_primitives: bool = True) -> None:
@@ -46,6 +47,74 @@ def assign_object_names_iterative(parent: QObject, prefix: str = "", exclude_pri
             if not exclude_primitives or not isinstance(child, primitives):
                 stack.append((child, object_name))
 
+class AbstractMainWindow(_QtWidgets.QMainWindow):
+    default_style: str
+
+    def setup_gui(self) -> None:
+        """
+        Configure the main graphical user interface (GUI) elements of the application.
+
+        This method sets up various widgets, layouts, and configurations required for the
+        main window interface. It is called after initialization and prepares the interface
+        for user interaction.
+
+        Note:
+            This method is intended to be overridden by subclasses with application-specific
+            GUI components.
+        """
+        raise NotImplementedError
+
+    def set_window_icon(self, absolute_path_to_icon: str) -> None:
+        self.setWindowIcon(_QtGui.QIcon(absolute_path_to_icon))
+
+    def set_window_title(self, title: str) -> None:
+        self.setWindowTitle(title)
+
+    def set_window_geometry(self, x: int, y: int, height: int, width: int) -> None:
+        self.setGeometry(_QtCore.QRect(x, y, width, height))
+
+    def set_window_dimensions(self, height: int, width: int) -> None:
+        self.resize(_QtCore.QSize(width, height))
+
+    def set_font(self, font_str: str) -> None:
+        font = _QtGui.QFont(font_str)
+        self.setFont(font)
+        for child in self.findChildren(QWidget):
+            child.setFont(font)
+        self.update()
+        self.repaint()
+
+    def set_theme_to_singular(self, theme_str: str, widget_or_window: QWidget) -> None:
+        """Applies a theme string to a singular object"""
+        widget_or_window.setStyleSheet(theme_str)
+
+    def set_global_theme(self, theme_str: str, base: str | None = None) -> None:
+        self.setStyleSheet(theme_str)
+        if base is not None:
+            if not hasattr(self, "default_style"):
+                self.default_style = self.app.style().objectName()
+            self.app.setStyle(base)
+        else:
+            if hasattr(self, "default_style"):
+                self.app.setStyle(self.default_style)
+
+    def internal_obj(self) -> QMainWindow:
+        return self
+
+    def start(self) -> None:
+        self.show()
+        self.raise_()
+
+    def close(self) -> None:
+        QMainWindow.close(self)
+
+class AppStyle:
+    """QApp Styles"""
+    Windows11 = "windows11"
+    WindowsVista = "windowsvista"
+    Windows = "Windows"
+    Fusion = "Fusion"
+    Default = None
 
 class Style:
     _loaded_styles: dict[str, _ty.Self] = {}
@@ -186,7 +255,6 @@ class Style:
     def __repr__(self) -> str:
         return (f"Style(style_name={self._style_name}, for_paths={self._for_paths}, parameters={self._parameters}, "
                 f"palette_parameter={self._palette_parameter})")
-
 
 class Theme:
     _loaded_themes: dict[str, _ty.Self] = {}
