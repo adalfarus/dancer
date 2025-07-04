@@ -2,10 +2,14 @@
 [![CI Test Status](https://github.com/Adalfarus/dancer/actions/workflows/test-package.yml/badge.svg)](https://github.com/Adalfarus/dancer/actions)
 [![License: LGPL-2.1](https://img.shields.io/github/license/Adalfarus/dancer)](https://github.com/Adalfarus/dancer/blob/main/LICENSE)
 
-<div style="display: flex; align-items: center; width: 100%;">
-    <img src="dancer.png" style="height: 10vw;">
-    <p style="margin: 0 0 0 2vw; font-size: 10vw; color: #3b4246;">Dancer</p>
-</div>
+[//]: # (<div style="display: flex; align-items: center; width: 100%;">)
+
+[//]: # (    <img src="project_data/dancer.png" style="height: 10vw;">)
+
+[//]: # (    <p style="margin: 0 0 0 2vw; font-size: 10vw; color: #3b4246;">Dancer</p>)
+
+[//]: # (</div>)
+<img src="project_data/img.png">
 
 dancer is a simple, and user-friendly Python library for creating competent apps.
 

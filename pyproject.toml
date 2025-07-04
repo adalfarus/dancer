@@ -53,7 +53,7 @@ where = ["src"]
 
 [project]
 name = "dancer"
-version = "0.0.0.1a1"
+version = "0.0.0.1a2"
 dependencies = ["packaging", "typing_extensions"]
 requires-python = ">= 3.10"
 authors = [
@@ -74,7 +74,6 @@ classifiers = [
 
 [project.optional-dependencies]
 qt = ["PySide6>=6.7.0", "aplustools[all]>=2.0.0.0b1"]
-tkinter = []
 dev = ["pytest"]
 
 [project.urls]
