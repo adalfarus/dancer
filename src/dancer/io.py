@@ -6,9 +6,12 @@ import threading
 from queue import Queue
 from enum import Enum as _Enum
 import sys as _sys
+import sys
+import logging
 import abc as _abc
 import re
 import io
+import os
 
 # Standard typing imports for aps
 import collections.abc as _a
@@ -81,25 +84,6 @@ class ActLogger(metaclass=SingletonMeta):
     Attributes:
         _logger: The logger instance used for logging messages.
         handlers: A list of handlers attached to the logger (console, file handlers).
-
-    Methods:
-        __init__(name, log_to_file, filename):
-            Initialize the logger with optional file logging.
-
-        monitor_pipe(pipe, level):
-            Redirect output streams (sys.stdout or sys.stderr) to the logger.
-
-        log(level, message):
-            Log a message with a specific logging level.
-
-        info(message):
-            Log an informational message.
-
-        debug(message):
-            Log a debug message.
-
-        error(message):
-            Log an error message.
     """
     def __init__(self, name: str = "ActLogger", log_to_file: bool = False, filepath: str | PLPath = "app.log") -> None:
         """
@@ -441,8 +425,8 @@ class IOManager(metaclass=SingletonMeta):
         self._button_display_callable.set_value(promt_creation_callable)
         self._order_logs(logs_folder_path)
         self._logger = ActLogger(log_to_file=True, filepath=os.path.join(logs_folder_path, "latest.log"))
-        self._logger.monitor_pipe(sys.stdout, level=logging.DEBUG)
-        self._logger.monitor_pipe(sys.stderr, level=logging.ERROR)
+        sys.stdout = self._logger.create_pipe_redirect(sys.stdout, level=logging.DEBUG)
+        sys.stderr = self._logger.create_pipe_redirect(sys.stderr, level=logging.ERROR)
         # Replace fancy characters
         self._is_indev.set_value(is_indev)
 
@@ -536,27 +520,27 @@ class IOManager(metaclass=SingletonMeta):
         self._currently_displayed.add(text)
 
         checkbox_text: str = "Do not show again"
-        buttons_list: _ty.List[str] = ["Ok"]
-        default_button: str = buttons_list[0]
+        options_list: _ty.List[str] = ["Ok"]
+        default_option: str = options_list[0]
 
         # add custom buttons
-        if custom_buttons is not None:
-            for key in list(custom_buttons.keys()):
-                buttons_list.append(key)
+        if custom_options is not None:
+            for key in list(custom_options.keys()):
+                options_list.append(key)
 
         popup_creation_callable: _ty.Callable = self._button_display_callable.get_value()
-        popup_return: tuple[str | None, bool] = popup_creation_callable("[N.E.F.S] " + title, text, description, icon,
-                                                                        buttons_list, default_button, checkbox_text)
+        popup_return: tuple[str | None, bool] = popup_creation_callable("[N.E.F.S] " + title, text, description, level,
+                                                                        options_list, default_option, checkbox_text)
 
         if popup_return[1]:
             self._do_not_show_again.add(text)
         self._currently_displayed.remove(text)
 
         # invoke button commands
-        button_name: str = popup_return[0]
-        if custom_buttons is not None:
-            if button_name in custom_buttons:
-                custom_buttons[button_name]()
+        option_name: str = popup_return[0]
+        if custom_options is not None:
+            if option_name in custom_options:
+                custom_options[option_name]()
 
     def _handle_prompt(self, show_prompt: bool, title: str, log_message: str, description: str,
                        level: _ty.Literal["debug", "information", "question", "warning", "error"],
@@ -573,7 +557,7 @@ class IOManager(metaclass=SingletonMeta):
         if not show_prompt:
             return
 
-        self._popup_queue.append(lambda: self._show_prompt(title, log_message, description, icon, custom_options))
+        self._popup_queue.append(lambda: self._show_prompt(title, log_message, description, level, custom_options))
 
     # "Errors"
 
@@ -722,6 +706,11 @@ class IOManager(metaclass=SingletonMeta):
                     return_type: _ty.Literal["thread", "proc"] = "thread"):  # -> tuple[SafeList, Event]:
         raise NotImplementedError("The current implementation does not support user prompting with arbitrary data.")
 
+    def __del__(self) -> None:
+        if hasattr(self, "_logger"):
+            sys.stdout = self._logger.restore_pipe(sys.stdout)
+            sys.stderr = self._logger.restore_pipe(sys.stderr)
+
 class SystemTheme(_Enum):
     """Used to make system theme information standardized"""
     LIGHT = 2
@@ -733,4 +722,5 @@ class BaseSystemType():
 
 # Copyright adalfarus
 def get_system():
-    ...
+    from aplustools.io.env import get_system
+    return get_system()

@@ -55,7 +55,7 @@ def _configure() -> dict[str, str]:
     accumulated_logs = "Starting cloning of defaults ...\n"
     old_cwd = os.getcwd()
     install_dir = os.path.join(old_cwd, "default-config")  # TODO: Use systems stuff
-    base_app_dir = os.path.join(os.environ.get("LOCALAPPDATA", "."), PROGRAM_NAME_NORMALIZED)
+    base_app_dir = os.path.join(os.environ.get("LOCALAPPDATA", "."), f"{PROGRAM_NAME_NORMALIZED}_{VERSION}{VERSION_ADD}")
 
     if INDEV and os.path.exists(base_app_dir):  # Remove everything to simulate a fresh install
         if not INDEV_KEEP_RUNTIME_FILES:
@@ -124,6 +124,7 @@ class AppInfo:
     INDEV: bool
     INDEV_KEEP_RUNTIME_FILES: bool
     PROGRAM_NAME: str
+    PROGRAM_NAME_NORMALIZED: str
     VERSION: int
     VERSION_ADD: str
     OS_LIST: dict[str, dict[str, tuple[str, ...]]]
@@ -140,7 +141,7 @@ def configure(app_info: AppInfo) -> None:
     PROGRAM_NAME = app_info.PROGRAM_NAME
     VERSION = app_info.VERSION
     VERSION_ADD = app_info.VERSION_ADD
-    PROGRAM_NAME_NORMALIZED = f"{PROGRAM_NAME.lower().replace(' ', '_')}_{VERSION}{VERSION_ADD}"
+    PROGRAM_NAME_NORMALIZED = app_info.PROGRAM_NAME_NORMALIZED
     OS_LIST = app_info.OS_LIST
     PY_LIST = app_info.PY_LIST
     DIR_STRUCTURE = app_info.DIR_STRUCTURE
@@ -195,5 +196,7 @@ def setup() -> None:
 def do(app_info: AppInfo) -> None:
     """Does the three steps configure, check setup at once."""
     configure(app_info)
-    check()
+    err = check()
+    if err is not None:
+        raise err
     setup()

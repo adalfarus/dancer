@@ -3,11 +3,19 @@ from PySide6 import QtCore as _QtCore, QtGui as _QtGui, QtWidgets as _QtWidgets
 from PySide6.QtWidgets import (QMessageBox as _QMessageBox, QCheckBox as _QCheckBox, QBoxLayout as _QBoxLayout,
                                QWidget as _QWidget, QLayout as _QLayout, QApplication as _QApplication)
 from PySide6.QtCore import Qt as _Qt, QTimer as _QTimer, QObject as _QObject, Signal as _Signal
+from PySide6.QtGui import QPalette
 from argparse import Namespace as _Ns
 import sys
+import os
 
 from . import DefaultAppGUI as _DefaultGUIApp
 from .qts import assign_object_names_iterative, AbstractMainWindow, AppStyle, Style, Theme
+from .io import SystemTheme, get_system
+
+# Standard typing imports for aps
+import collections.abc as _a
+import typing as _ty
+import types as _ts
 
 __all__ = ["QQuickMessageBox", "QBoxDirection", "QNoSpacingBoxLayout", "QtTimidTimer", "DefaultAppGUIQt"]
 
@@ -32,7 +40,7 @@ class QQuickMessageBox(_QMessageBox):
         :param standard_buttons: The standard buttons to include.
         :param default_button: The default button.
         """
-        super().__init__(parent)
+        super().__init__(parent=parent)
         for arg, func in zip([standard_buttons, icon, window_title, text, detailed_text, checkbox, default_button],
                              ["setStandardButtons", "setIcon", "setWindowTitle", "setText", "setDetailedText",
                               "setCheckBox", "setDefaultButton"]):
@@ -243,63 +251,62 @@ class QtAppSettings(_QObject):
         self._settings.store("logging_mode", logging_mode)
         self.logging_mode_changed.emit(logging_mode)
 
-# TODO: Add theme stuff to qt app
+
 class DefaultAppGUIQt(_DefaultGUIApp):
-    def __init__(self, window: AbstractMainWindow, settings: QtAppSettings, themes_directory: str, styles_directory: str, logs_directory: str,
+    def __init__(self, window: _ty.Type[AbstractMainWindow], settings: QtAppSettings, themes_directory: str, styles_directory: str, logs_directory: str,
                  parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False) -> None:
         super().__init__(logs_directory, parsed_args, logging_level, setup_thread_pool=setup_thread_pool)
+        try:
+            self.qapp: _QtWidgets.QApplication = _QtWidgets.QApplication(sys.argv)  # Just creating the Qapp so we can init widgets
+            self.window: AbstractMainWindow = window()
+            self.settings: QtAppSettings = settings
 
-        self.window: AbstractMainWindow = window
-        self.settings: QtAppSettings = settings
+            # Setup window
+            self.system: BaseSystemType = get_system()
+            self.os_theme: SystemTheme = self.get_os_theme()
+            self.current_theming: str = ""
 
-        # Setup window
-        self.system: BaseSystemType = get_system()
-        self.os_theme: SystemTheme = self.get_os_theme()
-        self.current_theming: str = ""
+            self.themes_directory: str = themes_directory
+            self.styles_directory: str = styles_directory
+            self.load_themes(self.themes_directory)
+            self.load_styles(self.styles_directory)
 
-        self.themes_directory: str = themes_directory
-        self.styles_directory: str = styles_directory
-        self.load_themes(self.themes_directory)
-        self.load_styles(self.styles_directory)
+            self.window.setup_gui()
 
-        self.window.setup_gui()
+            x, y, width, height = self.settings.get_window_geometry()
+            if not self.settings.get_save_window_dimensions():
+                width = 1050
+                height = 640
+            if self.settings.get_save_window_position():
+                self.window.set_window_geometry(x, y + 31, width, height)  # Somehow saves it as 31 pixels less,
+            else:  # I guess windows does some weird shit with the title bar
+                self.window.set_window_dimensions(width, height)
 
-        x, y, width, height = self.settings.get_window_geometry()
-        if not self.settings.get_save_window_dimensions():
-            width = 1050
-            height = 640
-        if self.settings.get_save_window_position():
-            self.window.set_window_geometry(x, y + 31, width, height)  # Somehow saves it as 31 pixels less,
-        else:  # I guess windows does some weird shit with the title bar
-            self.window.set_window_dimensions(width, height)
+            assign_object_names_iterative(self.window.internal_obj())  # Set object names for theming
 
-        assign_object_names_iterative(self.window.internal_obj())  # Set object names for theming
-        self.apply_theme()
-
-        self.window.start()  # Shows gui
-        self.window.set_font(self.settings.get_font())  # So that everything gets updated
-
-        self.timer_number: int = 1
-        self.timer: QtTimidTimer = QtTimidTimer()
-        self.timer.timeout.connect(self.timer_tick)
-        self.timer.start(500, 0)
+            self.timer_number: int = 1
+            self.timer: QtTimidTimer = QtTimidTimer()
+            self.timer.timeout.connect(self.timer_tick)
+        except Exception as e:
+            raise Exception("Exception occurred during initialization of the Main class") from e
 
     def open_url(self, url: str) -> None:
         QDesktopServices.openUrl(QUrl(url))
 
-    def button_popup(self, title: str, text: str, description: str,
-                     icon: _ty.Literal["Information", "Critical", "Question", "Warning", "NoIcon"],
-                     buttons: list[str], default_button: str, checkbox: str | None = None) -> tuple[str | None, bool]:
+    def prompt_user(self, title: str, text: str, description: str,
+                    level: _ty.Literal["debug", "information", "question", "warning", "error"],
+                    options: list[str], default_option: str, checkbox: str | None = None) -> tuple[str | None, bool]:
         if checkbox is not None:
-            checkbox = QCheckBox(checkbox)
-        msg_box = QQuickMessageBox(self, getattr(QMessageBox.Icon, icon), title, text,
+            checkbox = _QtWidgets.QCheckBox(checkbox)
+        icon_str = {"information": "Information", "error": "Critical", "question": "Question", "warning": "Warning"}.get(level, "NoIcon")
+        msg_box = QQuickMessageBox(self.window.internal_obj(), getattr(_QMessageBox.Icon, icon_str), title, text,
                                    checkbox=checkbox, standard_buttons=None, default_button=None)
-        button_map: dict[str, QPushButton] = {}
-        for button_str in buttons:
-            button = QPushButton(button_str)
+        button_map: dict[str, _QtWidgets.QPushButton] = {}
+        for button_str in options:
+            button = _QtWidgets.QPushButton(button_str)
             button_map[button_str] = button
-            msg_box.addButton(button, QMessageBox.ButtonRole.ActionRole)
-        custom_button = button_map.get(default_button)
+            msg_box.addButton(button, _QMessageBox.ButtonRole.ActionRole)
+        custom_button = button_map.get(default_option)
         if custom_button is not None:
             msg_box.setDefaultButton(custom_button)
         msg_box.setDetailedText(description)
@@ -320,7 +327,7 @@ class DefaultAppGUIQt(_DefaultGUIApp):
         if clear:
             Theme.clear_loaded_themes()
         for file in os.listdir(theme_folder):
-            if file.endswith(".th"):
+            if file.endswith(".qth"):
                 path = os.path.join(theme_folder, file)
                 Theme.load_from_file(path)
 
@@ -332,7 +339,7 @@ class DefaultAppGUIQt(_DefaultGUIApp):
         if clear:
             Style.clear_loaded_styles()
         for file in os.listdir(style_folder):
-            if file.endswith(".st"):
+            if file.endswith(".qst"):
                 path = os.path.join(style_folder, file)
                 Style.load_from_file(path)
 
@@ -375,9 +382,11 @@ class DefaultAppGUIQt(_DefaultGUIApp):
                 self.timer_number = 1
 
     def exec(self) -> int:
-        self.qapp = _QtWidgets.QApplication(sys.argv)
         self.window.app = self.qapp
-        self.window.start()
+        self.apply_theme()
+        self.window.start()  # Shows gui
+        self.window.set_font(self.settings.get_font())  # So that everything gets updated
+        self.timer.start(500, 0)
         return self.qapp.exec()
 
     def crash(self, error_title: str, error_text: str, error_description: str) -> bool:
@@ -409,6 +418,6 @@ class DefaultAppGUIQt(_DefaultGUIApp):
             self.pool.shutdown()
         if hasattr(self, "qapp"):
             if self.qapp is not None:
-                instance = qapp.instance()
+                instance = self.qapp.instance()
                 if instance is not None:
                     instance.quit()

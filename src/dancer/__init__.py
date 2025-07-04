@@ -5,6 +5,7 @@ from dataclasses import dataclass as _dataclass
 from traceback import format_exc as _format_exc
 import requests
 import logging
+import time
 import sys
 import os
 
@@ -240,17 +241,21 @@ class DefaultApp(MainClass):
     def __init__(self, parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False):
         try:
             self.pool: LazyDynamicThreadPoolExecutor | None = None
-            self._for_loop_list: ThreadSafeList | None = None
+            self._for_loop_list: list[tuple[_ty.Callable[[_ty.Any], _ty.Any], tuple[_ty.Any]]] | None = None
+            self._running_tasks: set[str] | None = None  # Only ever accessed in main thread
             self.max_collections_per_timer_tick: int = 5
             if setup_thread_pool:
+                # TODO: Migrate
+                from aplustools.io.concurrency import LazyDynamicThreadPoolExecutor, ThreadSafeList
                 # Thread pool
                 self.pool = LazyDynamicThreadPoolExecutor(0, 2, 1.0, 1)
-                self._for_loop_list: list[tuple[_ty.Callable[[_ty.Any], _ty.Any], tuple[_ty.Any]]] = ThreadSafeList()
+                self._for_loop_list = ThreadSafeList()
+                self._running_tasks = set()
         except Exception as e:
             raise Exception("Exception occurred during initialization of the Main class") from e
 
     def _check_pool(self) -> bool:
-        return self.pool is None or self._for_loop_list is None
+        return not (self.pool is None or self._for_loop_list is None)
 
     def _ensure_pool(self) -> None:
         if not self._check_pool():
@@ -258,6 +263,9 @@ class DefaultApp(MainClass):
 
     def offload_work(self, task_name: str, task_collection_func: _a.Callable, task: _a.Callable[[], tuple[...]]) -> None:
         self._ensure_pool()
+        if task_name in self._running_tasks:
+            raise RuntimeError(f"Cannot have two tasks with the name '{task_name}' running at the same time.")
+        self._running_tasks.add(task_name)
         self.pool.submit(lambda:
                              self._for_loop_list.append(
                                  (task_name, task_collection_func, task())
@@ -266,16 +274,27 @@ class DefaultApp(MainClass):
 
     def wait_for_completion(self, task_name: str, /, check_interval: float = 1.0) -> None:
         self._ensure_pool()
-        while any(x[0] == task_name for x in self._for_loop_list):
+        while task_name in self._running_tasks:
             time.sleep(check_interval)
+
+    def wait_for_manual_completion(self, task_name: str, /, check_interval: float = 1.0) -> None:
+        self._ensure_pool()
+        while task_name in self._running_tasks:
+            time.sleep(check_interval)
+            if self._for_loop_list:
+                entry = self._for_loop_list.pop()
+                name, func, args = entry
+                func(*args)
+                self._running_tasks.remove(name)
 
     def timer_tick(self) -> None:
         if self._check_pool():
             num_handled: int = 0
-            while len(self.for_loop_list) > 0 and num_handled < self.max_collections_per_timer_tick:
-                entry = self.for_loop_list.pop()
+            while len(self._for_loop_list) > 0 and num_handled < self.max_collections_per_timer_tick:
+                entry = self._for_loop_list.pop()
                 name, func, args = entry
                 func(*args)
+                self._running_tasks.remove(name)
                 num_handled += 1
 
     def close(self) -> None:
@@ -392,7 +411,7 @@ class DefaultAppGUI(DefaultApp):
     def __init__(self, logs_directory: str, parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False) -> None:
         super().__init__(parsed_args, logging_level, setup_thread_pool=setup_thread_pool)
         try:
-            self.update_check_url: str = update_check_url
+            # self.update_check_url: str = update_check_url  # TODO: Create class UpdateChecker
             # Setup IOManager
             self.io_manager: IOManager = IOManager()
             self.io_manager.init(self.prompt_user, logs_directory, config.INDEV)
@@ -409,11 +428,11 @@ class DefaultAppGUI(DefaultApp):
             self.os_theme: SystemTheme = self.get_os_theme()
             self.update_theme(self.os_theme)
 
-            if self.INFORM_ABOUT_UPDATE_INFO_FORMAT:
-                print("INFORMATION ABOUT UPDATE INFO FORMAT:: https://raw.githubusercontent.com/Giesbrt/Automaten/main/meta/update_check.json")
-            if self.CHECK_FOR_UPDATE:
-                result = self.get_update_result()
-                self.show_update_result(result)
+            # if self.INFORM_ABOUT_UPDATE_INFO_FORMAT:
+            #     print("INFORMATION ABOUT UPDATE INFO FORMAT:: https://raw.githubusercontent.com/Giesbrt/Automaten/main/meta/update_check.json")
+            # if self.CHECK_FOR_UPDATE:
+            # result = self.get_update_result()
+            # self.show_update_result(result)
         except Exception as e:
             raise Exception("Exception occurred during initialization of the Main class") from e
 

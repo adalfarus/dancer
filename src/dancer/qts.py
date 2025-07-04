@@ -3,6 +3,7 @@ from string import Template, ascii_letters, digits
 import os
 import re
 
+from PySide6.QtWidgets import QWidget, QMainWindow
 from PySide6.QtGui import QPalette, QColor
 from PySide6.QtCore import Qt, QObject
 from PySide6 import QtWidgets as _QtWidgets, QtGui as _QtGui, QtCore as _QtCore
@@ -206,10 +207,10 @@ class Style:
     @classmethod
     def load_from_content(cls, filename: str, content: str) -> _ty.Self:
         """TBA"""
-        if filename.endswith(".st"):
-            style_name: str = filename[:-3].replace("_", " ").title()
+        if filename.endswith(".qst"):
+            style_name: str = os.path.splitext(filename)[0].replace("_", " ").title()
         else:
-            raise ValueError(f"Invalid .st file name: {filename}")
+            raise ValueError(f"Invalid .qst file name: {filename}")
 
         translation_table = str.maketrans("", "", "\n\t ")
         cleaned_content: str = re.sub(r"//.*?$|/\*.*?\*/", "", content, flags=re.DOTALL | re.MULTILINE)
@@ -219,7 +220,7 @@ class Style:
 
         trans_content: str = cleaned_content.translate(translation_table)
         if trans_content == "":
-            raise ValueError("The .st file is empty.")
+            raise ValueError("The .qst file is empty.")
 
         for_line: str
         other_content: str
@@ -454,15 +455,15 @@ class Theme:
 
     @classmethod
     def load_from_content(cls, filename: str, content: str) -> _ty.Self:
-        if "_" in filename and filename.endswith(".th"):
+        if "_" in filename and filename.endswith(".qth"):
             author, theme_name_ext = filename.split("_", 1)
-            theme_name = theme_name_ext[:-3]  # Remove ".th"
+            theme_name = os.path.splitext(theme_name_ext)[0]  # Remove ".qth"
         else:
-            raise ValueError(f"Invalid .th file name: {filename}")
+            raise ValueError(f"Invalid .qth file name: {filename}")
         # TODO: Use string translation here
         cleaned_content = re.sub(r"//.*?$|/\*.*?\*/", "", content, flags=re.DOTALL | re.MULTILINE).strip() + "\n"
         if cleaned_content == "":
-            raise ValueError("The .th file is empty.")
+            raise ValueError("The .qth file is empty.")
 
         mode: _ty.Literal["extending", "inheriting"] | None = None
         from_theme: str | None = None
@@ -474,7 +475,7 @@ class Theme:
         style_metadata = config_line.split("/")
         # print("Config Line:  ", repr(config_line), style_metadata)
         if len(style_metadata) < 3:
-            raise ValueError(f"The config line of the .th file is invalid: '{config_line}'")
+            raise ValueError(f"The config line of the .qth file is invalid: '{config_line}'")
         base_app_style = style_metadata[0] if len(style_metadata[0].strip()) > 0 else None
         compatible_styling = style_metadata[1] if len(style_metadata[1].strip()) > 0 else None
         style_precautions = style_metadata[2] if len(style_metadata[2].strip()) > 0 else None
