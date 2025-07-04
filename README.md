@@ -144,8 +144,8 @@ class App(DefaultServerTUI):
         self.thread.start()
         self.logger.info("Starting GUI ...")
 
-        self.app = QApplication([])
-        self.app.setQuitOnLastWindowClosed(False)
+        self.qapp = QApplication([])
+        self.qapp.setQuitOnLastWindowClosed(False)
 
         self.console_window = QPlainTextEdit(None)
         self.handler = QtConsoleHandler(self.console_window)
@@ -200,7 +200,7 @@ class App(DefaultServerTUI):
         menu.addAction(restart_action)
 
         quit_action = QAction("Quit")
-        quit_action.triggered.connect(self.app.quit)
+        quit_action.triggered.connect(self.qapp.quit)
         menu.addAction(quit_action)
 
         for action in menu.actions():
@@ -208,7 +208,7 @@ class App(DefaultServerTUI):
 
         tray.setContextMenu(menu)
         self.logger.info("Entering application loop ...")
-        return self.app.exec()
+        return self.qapp.exec()
 
     def open_settings(self) -> None:
         pass
@@ -220,7 +220,7 @@ class App(DefaultServerTUI):
         pass
 
     def restart(self) -> None:
-        self.app.exit(1000)  # Exit code 1000 is the default exit code for a restart in dancer (only works in compiled builds)
+        self.qapp.exit(1000)  # Exit code 1000 is the default exit code for a restart in dancer (only works in compiled builds)
 
     def close(self) -> None:
         if hasattr(self, "server") and self.server is not None:
@@ -231,7 +231,7 @@ class App(DefaultServerTUI):
 if __name__ == "__main__":
     app_info = config.AppInfo(
         True, False,  # These flags are INDEV and INDEV_KEEP_RUNTIME_FILES.
-        # Indev enables behavior such as replacing all appdata files. 
+        # Indev enables behavior such as replacing all appdata files.
         # They can also be checked by importing dancer.config in another file and accessing the e.g. .INDEV attribute.
         "ContentView Server",  # This is the program name
         "contentview_server",  # This is the normalized program name
