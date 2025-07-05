@@ -298,7 +298,7 @@ class DefaultApp(MainClass):
                 num_handled += 1
 
     def close(self) -> None:
-        if hasattr(self, "pool"):
+        if hasattr(self, "pool") and self.pool is not None:
             self.pool.shutdown()
 
 class DefaultAppTUI(DefaultApp):
@@ -481,13 +481,18 @@ def start(main_class: _ty.Type[MainClass], arg_parser: _Ag | None = None, EXIT_C
         return
 
     logging_level_str: str = args.logging_level
-    logging_level: int | None = None
-    logging_level = getattr(logging, logging_level_str.upper(), None)
-    if logging_level is None:
+    logging_level: int
+    input_logging_level = getattr(logging, logging_level_str.upper(), None)
+    if input_logging_level is None:
         logging.error(f"Invalid logging mode: {logging_level_str}")
         logging_level = logging.INFO
+    else:
+        logging_level = input_logging_level
 
-    print(f"Starting {config.PROGRAM_NAME} {str(config.VERSION) + config.VERSION_ADD} with py{'.'.join([str(x) for x in sys.version_info])} ...")
+    if config.INDEV:
+        print("Setting logging level to debug because INDEV flag is set ...")
+        logging_level = logging.DEBUG
+    print(f"Starting {config.PROGRAM_NAME} {str(config.VERSION) + config.VERSION_ADD} with py{'.'.join([str(x) for x in sys.version_info])} {'[INDEV]' if config.INDEV else ''} ...")
     try:
         dp_app = main_class(args, logging_level)
         current_exit_code = dp_app.exec()

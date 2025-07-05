@@ -1,6 +1,6 @@
 # Contributing Guidelines
 
-Thank you for your interest in contributing to `aplustools`! We welcome contributions from everyone. Below are some guidelines to help you get started.
+Thank you for your interest in contributing to `dancer`! We welcome contributions from everyone. Below are some guidelines to help you get started.
 
 ## Getting Started
 
@@ -8,7 +8,7 @@ Thank you for your interest in contributing to `aplustools`! We welcome contribu
     - Click on the 'Fork' button at the top right corner of the repository page to create a copy of the repository in your GitHub account.
     
 2. **Clone the Repository**:
-    - Clone your forked repository to your local machine using `git clone https://github.com/your-username/aplustools.git`
+    - Clone your forked repository to your local machine using `git clone https://github.com/adalfarus/dancer.git`
 
 3. **Set Up a Virtual Environment**:
     - It's a good practice to create a virtual environment for the project. You can create a virtual environment using `python -m venv env`.
@@ -36,7 +36,7 @@ Thank you for your interest in contributing to `aplustools`! We welcome contribu
 ## Submitting a Pull Request
 
 1. **Creating a Pull Request**:
-    - Go to the [repository page on GitHub](https://github.com/Adalfarus/aplustools) and click on the 'New Pull Request' button.
+    - Go to the [repository page on GitHub](https://github.com/Adalfarus/dancer) and click on the 'New Pull Request' button.
     - Select your fork and branch from the dropdown menus and click 'Create Pull Request'.
 
 2. **Describing Your Changes**:
@@ -55,4 +55,4 @@ Thank you for your interest in contributing to `aplustools`! We welcome contribu
 - Feel free to open an issue or create a pull request, regardless of your experience level.
 - Join our community chat to discuss the project with other contributors.
 
-Thank you for contributing to `aplustools`!
+Thank you for contributing to `dancer`!

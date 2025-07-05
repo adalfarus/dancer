@@ -2,8 +2,8 @@
 from PySide6 import QtCore as _QtCore, QtGui as _QtGui, QtWidgets as _QtWidgets
 from PySide6.QtWidgets import (QMessageBox as _QMessageBox, QCheckBox as _QCheckBox, QBoxLayout as _QBoxLayout,
                                QWidget as _QWidget, QLayout as _QLayout, QApplication as _QApplication)
-from PySide6.QtCore import Qt as _Qt, QTimer as _QTimer, QObject as _QObject, Signal as _Signal
-from PySide6.QtGui import QPalette
+from PySide6.QtCore import Qt as _Qt, QTimer as _QTimer, QObject as _QObject, Signal as _Signal, QUrl
+from PySide6.QtGui import QPalette, QDesktopServices
 from argparse import Namespace as _Ns
 import sys
 import os
@@ -17,7 +17,7 @@ import collections.abc as _a
 import typing as _ty
 import types as _ts
 
-__all__ = ["QQuickMessageBox", "QBoxDirection", "QNoSpacingBoxLayout", "QtTimidTimer", "DefaultAppGUIQt"]
+__all__ = ["QQuickMessageBox", "QBoxDirection", "QNoSpacingBoxLayout", "QtTimidTimer", "BasicAppGUIQt", "DefaultAppGUIQt"]
 
 MBoxIcon = _QMessageBox.Icon
 MBoxButton = _QMessageBox.StandardButton
@@ -252,38 +252,12 @@ class QtAppSettings(_QObject):
         self.logging_mode_changed.emit(logging_mode)
 
 
-class DefaultAppGUIQt(_DefaultGUIApp):
-    def __init__(self, window: _ty.Type[AbstractMainWindow], settings: QtAppSettings, themes_directory: str, styles_directory: str, logs_directory: str,
-                 parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False) -> None:
+class BasicAppGUIQt(_DefaultGUIApp):
+    def __init__(self, logs_directory: str, parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False) -> None:
         super().__init__(logs_directory, parsed_args, logging_level, setup_thread_pool=setup_thread_pool)
         try:
             self.qapp: _QtWidgets.QApplication = _QtWidgets.QApplication(sys.argv)  # Just creating the Qapp so we can init widgets
-            self.window: AbstractMainWindow = window()
-            self.settings: QtAppSettings = settings
-
-            # Setup window
-            self.system: BaseSystemType = get_system()
-            self.os_theme: SystemTheme = self.get_os_theme()
-            self.current_theming: str = ""
-
-            self.themes_directory: str = themes_directory
-            self.styles_directory: str = styles_directory
-            self.load_themes(self.themes_directory)
-            self.load_styles(self.styles_directory)
-
-            self.window.setup_gui()
-
-            x, y, width, height = self.settings.get_window_geometry()
-            if not self.settings.get_save_window_dimensions():
-                width = 1050
-                height = 640
-            if self.settings.get_save_window_position():
-                self.window.set_window_geometry(x, y + 31, width, height)  # Somehow saves it as 31 pixels less,
-            else:  # I guess windows does some weird shit with the title bar
-                self.window.set_window_dimensions(width, height)
-
-            assign_object_names_iterative(self.window.internal_obj())  # Set object names for theming
-
+            self.parent = None
             self.timer_number: int = 1
             self.timer: QtTimidTimer = QtTimidTimer()
             self.timer.timeout.connect(self.timer_tick)
@@ -299,8 +273,17 @@ class DefaultAppGUIQt(_DefaultGUIApp):
         if checkbox is not None:
             checkbox = _QtWidgets.QCheckBox(checkbox)
         icon_str = {"information": "Information", "error": "Critical", "question": "Question", "warning": "Warning"}.get(level, "NoIcon")
-        msg_box = QQuickMessageBox(self.window.internal_obj(), getattr(_QMessageBox.Icon, icon_str), title, text,
-                                   checkbox=checkbox, standard_buttons=None, default_button=None)
+        icon = getattr(_QMessageBox.Icon, icon_str)
+
+        if self.parent is not None:
+            msg_box = QQuickMessageBox(self.parent, icon, title, text,
+                                       checkbox=checkbox, standard_buttons=None, default_button=None)
+        else:
+            msg_box = QQuickMessageBox(None, None, title, text, checkbox=checkbox,
+                                       standard_buttons=None, default_button=None)
+            window_icon = _QtGui.QIcon(_QtWidgets.QMessageBox.standardIcon(icon))
+            msg_box.setWindowIcon(window_icon)
+
         button_map: dict[str, _QtWidgets.QPushButton] = {}
         for button_str in options:
             button = _QtWidgets.QPushButton(button_str)
@@ -321,6 +304,85 @@ class DefaultAppGUIQt(_DefaultGUIApp):
             if msg_box.clickedButton() == button_obj:
                 return button_text, checkbox_checked
         return None, checkbox_checked
+
+    def timer_tick(self, index: int) -> None:
+        if index == 0:  # Default 500ms timer
+            super().timer_tick()
+            self.timer_number += 1
+            if self.timer_number > 999:
+                self.timer_number = 1
+
+    def exec(self) -> int:
+        self.timer.start(500, 0)
+        return self.qapp.exec()
+
+    def crash(self, error_title: str, error_text: str, error_description: str) -> bool:
+        icon: _QtGui.QIcon
+        if error_title == "Warning":
+            icon = _QtGui.QIcon(_QtWidgets.QMessageBox.standardIcon(_QtWidgets.QMessageBox.Icon.Warning))
+        else:
+            icon = _QtGui.QIcon(_QtWidgets.QMessageBox.standardIcon(_QtWidgets.QMessageBox.Icon.Critical))
+        custom_icon: bool = False
+        if hasattr(self, "abs_window_icon_path"):
+            icon_path: str = self.abs_window_icon_path
+            icon = _QtGui.QIcon(icon_path)
+            custom_icon = True
+        msg_box = QQuickMessageBox(None, _QtWidgets.QMessageBox.Icon.Warning if custom_icon else None, error_title, error_text,
+                                   error_description,
+                                   standard_buttons=_QtWidgets.QMessageBox.StandardButton.Ok | _QtWidgets.QMessageBox.StandardButton.Retry,
+                                   default_button=_QtWidgets.QMessageBox.StandardButton.Ok)
+        msg_box.setWindowIcon(icon)
+        pressed_button = msg_box.exec()
+        if pressed_button == _QtWidgets.QMessageBox.StandardButton.Retry:
+            return True
+        return False
+
+    def close(self) -> None:
+        """Cleans up resources"""
+        super().close()
+        if hasattr(self, "timer"):
+            self.timer.stop_all()
+        if hasattr(self, "qapp"):
+            if self.qapp is not None:
+                instance = self.qapp.instance()
+                if instance is not None:
+                    instance.quit()
+
+
+class DefaultAppGUIQt(BasicAppGUIQt):
+    def __init__(self, window: _ty.Type[AbstractMainWindow], settings: QtAppSettings, themes_directory: str, styles_directory: str, logs_directory: str,
+                 parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False, setup_theming: bool = True) -> None:
+        super().__init__(logs_directory, parsed_args, logging_level, setup_thread_pool=setup_thread_pool)
+        try:
+            self.window: AbstractMainWindow = window()
+            self.parent = self.window.internal_obj()
+            self.settings: QtAppSettings = settings
+
+            # Setup window
+            # self.system: BaseSystemType = get_system()
+            # self.os_theme: SystemTheme = self.get_os_theme()
+            self.current_theming: str = ""
+
+            self.themes_directory: str = themes_directory
+            self.styles_directory: str = styles_directory
+            if setup_theming:
+                self.load_themes(self.themes_directory)
+                self.load_styles(self.styles_directory)
+
+            self.window.setup_gui()
+
+            x, y, width, height = self.settings.get_window_geometry()
+            if not self.settings.get_save_window_dimensions():
+                width = 1050
+                height = 640
+            if self.settings.get_save_window_position():
+                self.window.set_window_geometry(x, y + 31, width, height)  # Somehow saves it as 31 pixels less,
+            else:  # I guess windows does some weird shit with the title bar
+                self.window.set_window_dimensions(width, height)
+
+            assign_object_names_iterative(self.window.internal_obj())  # Set object names for theming
+        except Exception as e:
+            raise Exception("Exception occurred during initialization of the Main class") from e
 
     def load_themes(self, theme_folder: str, clear: bool = False) -> None:
         """Loads all theme files from styling/themes"""
@@ -374,50 +436,13 @@ class DefaultAppGUIQt(_DefaultGUIApp):
                 self.apply_theme()
 
     def timer_tick(self, index: int) -> None:
+        super().timer_tick(index)
         if index == 0:  # Default 500ms timer
-            super().timer_tick()
             self.check_theme_change()
-            self.timer_number += 1
-            if self.timer_number > 999:
-                self.timer_number = 1
 
     def exec(self) -> int:
         self.window.app = self.qapp
         self.apply_theme()
         self.window.start()  # Shows gui
         self.window.set_font(self.settings.get_font())  # So that everything gets updated
-        self.timer.start(500, 0)
-        return self.qapp.exec()
-
-    def crash(self, error_title: str, error_text: str, error_description: str) -> bool:
-        icon: _QtGui.QIcon
-        if error_title == "Warning":
-            icon = _QtGui.QIcon(_QtWidgets.QMessageBox.standardIcon(_QtWidgets.QMessageBox.Icon.Warning))
-        else:
-            icon = _QtGui.QIcon(_QtWidgets.QMessageBox.standardIcon(_QtWidgets.QMessageBox.Icon.Critical))
-        custom_icon: bool = False
-        if hasattr(self, "abs_window_icon_path"):
-            icon_path: str = self.abs_window_icon_path
-            icon = _QtGui.QIcon(icon_path)
-            custom_icon = True
-        msg_box = QQuickMessageBox(None, _QtWidgets.QMessageBox.Icon.Warning if custom_icon else None, error_title, error_text,
-                                   error_description,
-                                   standard_buttons=_QtWidgets.QMessageBox.StandardButton.Ok | _QtWidgets.QMessageBox.StandardButton.Retry,
-                                   default_button=_QtWidgets.QMessageBox.StandardButton.Ok)
-        msg_box.setWindowIcon(icon)
-        pressed_button = msg_box.exec()
-        if pressed_button == _QtWidgets.QMessageBox.StandardButton.Retry:
-            return True
-        return False
-
-    def close(self) -> None:
-        """Cleans up resources"""
-        if hasattr(self, "timer"):
-            self.timer.stop_all()
-        if hasattr(self, "pool"):
-            self.pool.shutdown()
-        if hasattr(self, "qapp"):
-            if self.qapp is not None:
-                instance = self.qapp.instance()
-                if instance is not None:
-                    instance.quit()
+        return super().exec()

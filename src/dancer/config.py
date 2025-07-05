@@ -8,16 +8,47 @@ import os
 import typing as _ty
 _DirectoryTree = dict[str, _ty.Union["DirectoryTree", None]]
 
-INDEV: bool = False
-INDEV_KEEP_RUNTIME_FILES: bool = True
-PROGRAM_NAME: str = "ContentView"
-VERSION: int = 100
-VERSION_ADD: str = "a0"
-PROGRAM_NAME_NORMALIZED: str = f"{PROGRAM_NAME.lower().replace(' ', '_')}_{VERSION}{VERSION_ADD}"
-OS_LIST: dict[str, dict[str, tuple[str, ...]]] = {"Windows": {"10": ("any",), "11": ("any",)}}
-PY_LIST: list[tuple[int, int]] = [(3, 10), (3, 11), (3, 12), (3, 13)]
+INDEV: bool# = False
+INDEV_KEEP_RUNTIME_FILES: bool# = True
+PROGRAM_NAME: str #= "ContentView"
+VERSION: int #= 100
+VERSION_ADD: str #= "a0"
+PROGRAM_NAME_NORMALIZED: str # = f"{PROGRAM_NAME.lower().replace(' ', '_')}_{VERSION}{VERSION_ADD}"
+OS_LIST: dict[str, dict[str, tuple[str, ...]]]  #  = {"Windows": {"10": ("any",), "11": ("any",)}}
+PY_LIST: list[tuple[int, int]] #  = [(3, 10), (3, 11), (3, 12), (3, 13)]
 DIR_STRUCTURE: _DirectoryTree
 LOCAL_MODULE_LOCATIONS: list[str]
+
+RUNTIME_FILE_EXTENSIONS: tuple[str] = (
+    ".json",
+    ".yml", ".yaml",
+    ".ini",
+    ".toml",
+    ".conf",
+    ".cfg",
+    ".xml",
+    ".log",
+    ".err",
+    ".out",
+    ".trace",
+    ".dmp",
+    ".db",
+    ".sqlite", ".sqlite3",
+    ".dat",
+    ".bak",
+    ".tmp",
+    ".cache",
+    ".mo", ".po",
+    ".lang",
+    ".key", ".pem",
+    ".cred", ".auth",
+    ".unicode",
+    ".map",
+    ".layout",
+    ".mod",
+    ".profile",
+    ".session"
+)
 
 OLD_CWD: str = os.getcwd()
 if "CONFIG_DONE" not in locals():
@@ -64,11 +95,11 @@ def _configure() -> dict[str, str]:
         else:  # Skip only .db or .log files
             for root, dirs, files in os.walk(base_app_dir, topdown=False):
                 for file in files:
-                    if not file.endswith((".db", ".log")):
+                    if not file.endswith(RUNTIME_FILE_EXTENSIONS):
                         os.remove(os.path.join(root, file))
                 for directory in dirs:
                     dir_path = os.path.join(root, directory)
-                    if not any(f.endswith((".db", ".log")) or os.path.isdir(os.path.join(dir_path, f)) for f in os.listdir(dir_path)):
+                    if not any(f.endswith(RUNTIME_FILE_EXTENSIONS) or os.path.isdir(os.path.join(dir_path, f)) for f in os.listdir(dir_path)):
                         shutil.rmtree(dir_path)
 
     dirs_to_create = []

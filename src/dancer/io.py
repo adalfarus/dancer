@@ -74,6 +74,9 @@ class _StreamToLogger(io.IOBase):
             self.logger.log(self.log_level, self.linebuf.rstrip())
             self.linebuf = ""
 
+    def restore(self) -> io.IOBase:
+        return self.original_stream
+
 # Copyright adalfarus
 class ActLogger(metaclass=SingletonMeta):
     """
@@ -383,7 +386,7 @@ class StaticContainer(_ty.Generic[S]):
         """
         self._value = None
 
-# Copyright zScout
+# Copyright zScout  TODO: Refactor, title etc are just wrongly ordered in the methods and adding support for custom icons; Or also ignoring msgs with only small changes?
 class IOManager(metaclass=SingletonMeta):
     """TBA"""
     _do_not_show_again: OrderedSet[str] = OrderedSet()
@@ -393,6 +396,9 @@ class IOManager(metaclass=SingletonMeta):
     _popup_queue: _ty.List[_ty.Callable[[_ty.Any], _ty.Any]] = []
 
     _logger: ActLogger
+
+    def add_handler(self, handler) -> None:
+        self._logger.add_handler(handler)
 
     def has_cached_errors(self) -> bool:
         """
@@ -529,7 +535,7 @@ class IOManager(metaclass=SingletonMeta):
                 options_list.append(key)
 
         popup_creation_callable: _ty.Callable = self._button_display_callable.get_value()
-        popup_return: tuple[str | None, bool] = popup_creation_callable("[N.E.F.S] " + title, text, description, level,
+        popup_return: tuple[str | None, bool] = popup_creation_callable(title, text, description, level,  # "[N.E.F.S] " +
                                                                         options_list, default_option, checkbox_text)
 
         if popup_return[1]:
@@ -599,7 +605,7 @@ class IOManager(metaclass=SingletonMeta):
         if ActLogger().logging_level > INFO:
             return
 
-        self._handle_prompt(show_prompt, title, log_message, description, "Information", custom_options)
+        self._handle_prompt(show_prompt, title, log_message, description, "information", custom_options)
 
     def warning(self, log_message: str, description: str = "", show_prompt: bool = False,
                 print_log: bool = True, prompt_title: str | None = None,
@@ -624,7 +630,7 @@ class IOManager(metaclass=SingletonMeta):
         if ActLogger().logging_level > WARNING:
             return
 
-        self._handle_prompt(show_prompt, title, log_message, description, "Warning", custom_options)
+        self._handle_prompt(show_prompt, title, log_message, description, "warning", custom_options)
 
     def fatal_error(self, log_message: str, description: str = "", show_prompt: bool = False,
                     print_log: bool = True, prompt_title: str | None = None,
@@ -666,7 +672,7 @@ class IOManager(metaclass=SingletonMeta):
         if ActLogger().logging_level > ERROR:
             return
 
-        self._handle_prompt(show_prompt, title, log_message, description, "Critical", custom_options)
+        self._handle_prompt(show_prompt, title, log_message, description, "error", custom_options)
 
     def debug(self, log_message: str, description: str = "", show_prompt: bool = False,
               print_log: bool = True, prompt_title: str | None = None,
@@ -698,7 +704,7 @@ class IOManager(metaclass=SingletonMeta):
         if ActLogger().logging_level > DEBUG:
             return
 
-        self._handle_prompt(show_prompt, title, log_message, description, "NoIcon", custom_options)
+        self._handle_prompt(show_prompt, title, log_message, description, "debug", custom_options)
 
     def prompt_user(self, title: str, message: str, details: str,
                     level: _ty.Literal["debug", "information", "question", "warning", "error"],
