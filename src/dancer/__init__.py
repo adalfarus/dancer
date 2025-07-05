@@ -1,24 +1,102 @@
 """Dancer"""
-from packaging.version import Version as _Version, InvalidVersion as _InvalidVersion
 from argparse import ArgumentParser as _Ag, Namespace as _Ns
 from dataclasses import dataclass as _dataclass
 from traceback import format_exc as _format_exc
-import requests
 import logging
+import shutil
 import time
 import sys
 import os
 
+from packaging.version import Version as _Version, InvalidVersion as _InvalidVersion
+import requests
+
 from . import config, io
-from .io import IOManager, ActLogger, get_system, SystemTheme, BaseSystemType
 
 from collections import abc as _a
 import typing as _ty
 
 
-__all__ = ["config", "io", "start", "Frontend", "UpdateResult", "UpdateChecker", "MainClass", "DefaultApp", "DefaultAppTUI", "DefaultServerTUI", "DefaultAppGUI"]
-__version__ = "0.0.0.1a1"
+__all__ = ["config", "io", "start", "UpdateResult", "UpdateChecker", "MainClass", "DefaultApp", "DefaultAppTUI", "DefaultServerTUI", "DefaultAppGUI"]
+__version__ = "0.0.0.1a2"
 
+
+def DefaultLogger(log_filepath: str | None, logging_level: int) -> io.ActLogger:
+    """Returns a configured ActLogger instance"""
+    # Setup ActLogger
+    logger: io.ActLogger
+    if log_filepath is not None:
+        logger = io.ActLogger(log_to_file=True, filepath=log_filepath)
+    else:
+        logger = io.ActLogger()
+    sys.stdout = logger.create_pipe_redirect(sys.stdout, level=logging.DEBUG)
+    sys.stderr = logger.create_pipe_redirect(sys.stderr, level=logging.ERROR)
+    mode = getattr(logging, logging.getLevelName(logging_level).upper())
+    if mode is not None:
+        logger.setLevel(mode)
+    for exported_line in config.exported_logs.split("\n"):
+        logger.debug(exported_line)  # Flush config prints
+    return logger
+
+def AdvancedLogger(logs_directory: str | None, prompt_user: _a.Callable, logging_level: int) -> io.IOManager:
+    """Returns a configured IOManager instance, this internally uses ActLogger and ActLogger is Singleton"""
+    # Setup IOManager
+    io_manager: io.IOManager = io.IOManager()
+    if logs_directory is not None:
+        io_manager.init(prompt_user, logs_directory, config.INDEV)
+    else:
+        raise NotImplementedError("Not logging to a directory is not yet supported for IOManager")
+    mode = getattr(logging, logging.getLevelName(logging_level).upper())
+    if mode is not None:
+        io_manager.set_logging_level(mode)
+    for exported_line in config.exported_logs.split("\n"):
+        io_manager.debug(exported_line)  # Flush config prints
+    return io_manager
+
+class Offloader:
+    """TBA"""
+    def __init__(self) -> None:
+        from aplustools.io.concurrency import LazyDynamicThreadPoolExecutor, ThreadSafeList
+        self.pool: LazyDynamicThreadPoolExecutor = LazyDynamicThreadPoolExecutor(0, 2, 1.0, 1)
+        self._for_loop_list: list[tuple[_ty.Callable[[_ty.Any], _ty.Any], tuple[_ty.Any]]] = ThreadSafeList()
+        self._running_tasks: set[str] = set()
+        self.max_collections_per_timer_tick: int = 5
+
+    def _check_pool(self) -> bool:
+        return not (self.pool is None or self._for_loop_list is None)
+
+    def _ensure_pool(self) -> None:
+        if not self._check_pool():
+            raise RuntimeError("Pool or/and for loop list is/are not initialized")
+
+    def offload_work(self, task_name: str, task_collection_func: _a.Callable, task: _a.Callable[[], tuple[...]]) -> None:
+        self._ensure_pool()
+        if task_name in self._running_tasks:
+            raise RuntimeError(f"Cannot have two tasks with the name '{task_name}' running at the same time.")
+        self._running_tasks.add(task_name)
+        self.pool.submit(lambda:
+                             self._for_loop_list.append(
+                                 (task_name, task_collection_func, task())
+                             )
+                         )
+
+    def wait_for_completion(self, task_name: str, /, check_interval: float = 1.0) -> None:
+        self._ensure_pool()
+        while task_name in self._running_tasks:
+            time.sleep(check_interval)
+
+    def wait_for_manual_completion(self, task_name: str, /, check_interval: float = 1.0) -> None:
+        self._ensure_pool()
+        while task_name in self._running_tasks:
+            time.sleep(check_interval)
+            if self._for_loop_list:
+                entry = self._for_loop_list.pop()
+                name, func, args = entry
+                func(*args)
+                self._running_tasks.remove(name)
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+        self.pool.shutdown(wait, cancel_futures=cancel_futures)
 
 @_dataclass  # TODO:
 class UpdateResult:
@@ -302,33 +380,21 @@ class DefaultApp(MainClass):
             self.pool.shutdown()
 
 class DefaultAppTUI(DefaultApp):
-    def __init__(self, log_filepath: str, parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False) -> None:
+    def __init__(self, log_filepath: str | None, parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False) -> None:
         super().__init__(parsed_args, logging_level, setup_thread_pool=setup_thread_pool)
         try:
-            # Setup ActLogger
-            self.logger: ActLogger = ActLogger(log_to_file=True, filepath=log_filepath)
-            sys.stdout = self.logger.create_pipe_redirect(sys.stdout, level=logging.DEBUG)
-            sys.stderr = self.logger.create_pipe_redirect(sys.stderr, level=logging.ERROR)
-            if logging_level:
-                mode = getattr(logging, logging.getLevelName(logging_level).upper())
-            else:
-                mode = logging.INFO
-            if mode is not None:
-                self.logger.setLevel(mode)
-            for exported_line in config.exported_logs.split("\n"):
-                self.logger.debug(exported_line)  # Flush config prints
-
-            self.system: BaseSystemType = get_system()
+            self.logger: io.ActLogger = DefaultLogger(log_filepath, logging_level)
+            self.system: io.BaseSystemType = io.get_system()
         except Exception as e:
             raise Exception("Exception occurred during initialization of the Main class") from e
 
     def close(self) -> None:
         if hasattr(self, "logger"):
-            sys.stdout = self.logger.restore_pipe(sys.stdout)
-            sys.stderr = self.logger.restore_pipe(sys.stderr)
+            sys.stdout = self.logger.restore_pipe(sys.stdout)  # type: ignore
+            sys.stderr = self.logger.restore_pipe(sys.stderr)  # type: ignore
 
     def crash(self, error_title: str, error_text: str, error_description: str) -> bool:
-        return self.prompt_user(f"--- {error_title} ---", error_text + "Do you want to restart?", error_description, options=["Y", "N"], default_option="Y") == "Y"
+        return self.prompt_user(f"--- {error_title} ---", error_text + "Do you want to restart?", error_description, "error", options=["Y", "N"], default_option="Y") == "Y"
 
     def prompt_user(self, title: str, message: str, details: str,
                     level: _ty.Literal["debug", "information", "question", "warning", "error"],
@@ -412,20 +478,10 @@ class DefaultAppGUI(DefaultApp):
         super().__init__(parsed_args, logging_level, setup_thread_pool=setup_thread_pool)
         try:
             # self.update_check_url: str = update_check_url  # TODO: Create class UpdateChecker
-            # Setup IOManager
-            self.io_manager: IOManager = IOManager()
-            self.io_manager.init(self.prompt_user, logs_directory, config.INDEV)
-            if logging_level:
-                mode = getattr(logging, logging.getLevelName(logging_level).upper())
-            else:
-                mode = logging.INFO
-            if mode is not None:
-                self.io_manager.set_logging_level(mode)
-            for exported_line in config.exported_logs.split("\n"):
-                self.io_manager.debug(exported_line)  # Flush config prints
+            self.io_manager: io.IOManager = AdvancedLogger(logs_directory, self.prompt_user, logging_level)
 
-            self.system: BaseSystemType = get_system()
-            self.os_theme: SystemTheme = self.get_os_theme()
+            self.system: io.BaseSystemType = io.get_system()
+            self.os_theme: io.SystemTheme = self.get_os_theme()
             self.update_theme(self.os_theme)
 
             # if self.INFORM_ABOUT_UPDATE_INFO_FORMAT:
@@ -460,10 +516,10 @@ class DefaultAppGUI(DefaultApp):
             self.update_theme(new_theme)
         self.io_manager.invoke_prompts()
 
-def start(main_class: _ty.Type[MainClass], arg_parser: _Ag | None = None, EXIT_CODES: dict[int, _a.Callable[[], None]] | None = None) -> None:
+def start(main_class: _ty.Type[MainClass], arg_parser: _Ag | None = None, exit_codes: dict[int, _a.Callable[[], None]] | None = None) -> None:
     """Starts the app and handles error catching"""
-    if EXIT_CODES is None:
-        EXIT_CODES = {
+    if exit_codes is None:
+        exit_codes = {
         1000: lambda: os.execv(sys.executable, [sys.executable] + sys.argv[1:])  # RESTART_CODE (only works compiled)
     }
     if arg_parser is None:
@@ -526,4 +582,4 @@ def start(main_class: _ty.Type[MainClass], arg_parser: _Ag | None = None, EXIT_C
         if dp_app is not None:
             dp_app.close()
         # results: str = diagnose_shutdown_blockers(return_result=True)
-        EXIT_CODES.get(current_exit_code, lambda: sys.exit(current_exit_code))()
+        exit_codes.get(current_exit_code, lambda: sys.exit(current_exit_code))()

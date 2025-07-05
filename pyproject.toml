@@ -54,7 +54,7 @@ where = ["src"]
 [project]
 name = "dancer"
 version = "0.0.0.1a2"
-dependencies = ["packaging", "typing_extensions"]
+dependencies = ["packaging", "typing_extensions", "requests"]
 requires-python = ">= 3.10"
 authors = [
   {name = "Cariel Becker", email = "cariel.becker@gmx.de"},
