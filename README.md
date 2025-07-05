@@ -283,6 +283,10 @@ if __name__ == "__main__":
     start(App, parser)  # Here we pass the App class and the parser (optional) dancer will always add logging-level to the parser.
 ````
 
+### Hybrid Example, a bit of TUI and a bit of GUI
+
+You can look at this example in more detail at: https://github.com/adalfarus/unicode-writer
+
 ### GUI Example (Qt)
 
 This shows how to structure a GUI app using `DefaultAppGUIQt`. Unlike the TUI example, this version makes full use of file-based settings, asset management, extension loading, and more. It is meant for apps with interactive UIs, not simple CLI or server tools.
