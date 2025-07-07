@@ -1,36 +1,21 @@
 """IO Component of dancer"""
 from pathlib import Path as PLPath
-from logging import ERROR, WARNING, INFO, DEBUG
-import logging as _logging
-import threading
-from queue import Queue
-from enum import Enum as _Enum
-import sys as _sys
-import sys
 import logging
-import abc as _abc
+import sys
 import re
 import io
 import os
+
+from aplustools.data import SingletonMeta
+from aplustools.io.env import BaseSystemType, SystemTheme, get_system
 
 # Standard typing imports for aps
 import collections.abc as _a
 import typing as _ty
 import types as _ts
 
+__all__ = ["BaseSystemType", "SystemTheme", "get_system", "SingletonMeta", "ActLogger", "IOManager"]
 
-# Copyright adalfarus
-class SingletonMeta(type):
-    """
-    Metaclass to make UnifiedRequestHandlerAdvanced a Singleton.
-    """
-    _instances: dict[_ty.Type[_ty.Any], _ty.Any] = {}
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            instance = super().__call__(*args, **kwargs)
-            cls._instances[cls] = instance
-        return cls._instances[cls]
 
 # Copyright adalfarus
 # Helper class to redirect streams to the logger
@@ -96,32 +81,31 @@ class ActLogger(metaclass=SingletonMeta):
         :param log_to_file: Boolean indicating if logs should be written to a file.
         :param filepath: Path of the log file.
         """
-        self._logger = _logging.getLogger(name)
-        self._logger.setLevel(_logging.DEBUG)
-        # self._logger.addHandler(_logging.StreamHandler(_sys.__stdout__))
-        self.handlers = []
+        self._logger = logging.getLogger(name)
+        self._logger.setLevel(logging.DEBUG)
+        self.handlers: list[logging.Handler] = []
 
         # Create formatter with the desired format
-        formatter = _logging.Formatter(
+        formatter = logging.Formatter(
             '[%(asctime)s.%(msecs)03d] [%(levelname)s] %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
 
         # Console handler
-        console_handler = _logging.StreamHandler(_sys.__stdout__)
+        console_handler = logging.StreamHandler(sys.__stdout__)
         console_handler.setFormatter(formatter)
         self._logger.addHandler(console_handler)
         self.handlers.append(console_handler)
 
         # File handler (optional)
         if log_to_file:
-            file_handler = _logging.FileHandler(filepath, encoding='utf8')
+            file_handler = logging.FileHandler(filepath, encoding='utf8')
             file_handler.setFormatter(formatter)
             self._logger.addHandler(file_handler)
             self.handlers.append(file_handler)
         self.logging_level: int = -1
 
-    def create_pipe_redirect(self, pipe: _ty.IO, level: int = _logging.INFO) -> _StreamToLogger:
+    def create_pipe_redirect(self, pipe: _ty.IO, level: int = logging.INFO) -> _StreamToLogger:
         """
         Return a stream wrapper that redirects writes to the logger.
 
@@ -131,7 +115,7 @@ class ActLogger(metaclass=SingletonMeta):
         """
         return _StreamToLogger(self._logger, level, pipe)
 
-    def restore_pipe(self, replacement: _StreamToLogger) -> _ty.IO:
+    def restore_pipe(self, replacement: _StreamToLogger) -> io.IOBase:
         """
         Restore the given global pipe (e.g. sys.stdout) to its original value.
 
@@ -139,7 +123,8 @@ class ActLogger(metaclass=SingletonMeta):
         """
         return replacement.restore()
 
-    def add_handler(self, mirror_to_io: io.IOBase) -> None:
+    def add_handler(self, mirror_to_io: logging.Handler) -> None:
+        """Adds a handler to the underlying logger and keeps track of it in the .handlers attribute"""
         self.handlers.append(mirror_to_io)
         self._logger.addHandler(mirror_to_io)
 
@@ -186,6 +171,7 @@ class ActLogger(metaclass=SingletonMeta):
         self._logger.warning(message)
 
     def setLevel(self, logging_level: int) -> None:
+        """Sets the level of the underlying logger"""
         self._logger.setLevel(logging_level)
         self.logging_level = logging_level
 
@@ -193,7 +179,7 @@ class ActLogger(metaclass=SingletonMeta):
 T = _ty.TypeVar("T")
 class OrderedSet(_ty.Generic[T]):
     # Docs generated with Github Copilot
-    def __init__(self, iterable: _ty.Iterable = None) -> None:
+    def __init__(self, iterable: _ty.Iterable[_ty.Any] | None = None) -> None:
         """
         OrderedSet is a hybrid of list and set. It maintains the order of elements like a list and ensures that each
         element is unique like a set. It is implemented using a list and a set. The list maintains the order of elements
@@ -357,6 +343,7 @@ class StaticContainer(_ty.Generic[S]):
     def __init__(self, value: S | None = None) -> None:
         self._value: S | None = value
 
+    # TODO: self._value is S or None but returned it is just S?
     def get_value(self) -> S:
         """
         Get the value stored in the Container
@@ -557,7 +544,7 @@ class IOManager(metaclass=SingletonMeta):
         :param title: Title of the dialog.
         :param log_message: Log message associated with the dialog.
         :param description: Additional description text.
-        :param icon: Type of icon to display in the dialog.
+        :param level: Type of icon to display in the dialog.
         :return: None
         """
         if not show_prompt:
@@ -714,19 +701,5 @@ class IOManager(metaclass=SingletonMeta):
 
     def __del__(self) -> None:
         if hasattr(self, "_logger"):
-            sys.stdout = self._logger.restore_pipe(sys.stdout)
-            sys.stderr = self._logger.restore_pipe(sys.stderr)
-
-class SystemTheme(_Enum):
-    """Used to make system theme information standardized"""
-    LIGHT = 2
-    DARK = 1
-    UNKNOWN = 0
-
-class BaseSystemType():
-    ...
-
-# Copyright adalfarus
-def get_system():
-    from aplustools.io.env import get_system
-    return get_system()
+            sys.stdout = self._logger.restore_pipe(sys.stdout)  # type: ignore
+            sys.stderr = self._logger.restore_pipe(sys.stderr)  # type: ignore

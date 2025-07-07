@@ -8,7 +8,7 @@ from argparse import Namespace as _Ns
 import sys
 import os
 
-from . import DefaultAppGUI as _DefaultGUIApp
+from ._default_apps import DefaultThemedApp as _DefaultThemedApp
 from .qts import assign_object_names_iterative, AbstractMainWindow, AppStyle, Style, Theme
 from .io import SystemTheme, get_system
 
@@ -252,7 +252,7 @@ class QtAppSettings(_QObject):
         self.logging_mode_changed.emit(logging_mode)
 
 
-class BasicAppGUIQt(_DefaultGUIApp):
+class BasicAppGUIQt(_DefaultThemedApp):
     def __init__(self, logs_directory: str, parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False) -> None:
         super().__init__(logs_directory, parsed_args, logging_level, setup_thread_pool=setup_thread_pool)
         try:

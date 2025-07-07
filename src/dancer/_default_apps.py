@@ -1,68 +1,54 @@
+"""Default app configurations"""
+from argparse import Namespace as _Ns
+import shutil
+import os
+
+from ._app import MainClass
+from ._default_modules import DefaultLogger, AdvancedLogger, Offloader
+from . import io
+
+from collections import abc as _a
+import typing as _ty
+
+__all__ = ["DefaultApp", "DefaultAppTUI", "DefaultServerTUI", "DefaultThemedApp"]
 
 
 class DefaultApp(MainClass):
     def __init__(self, parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False):
         try:
-            self.pool: LazyDynamicThreadPoolExecutor | None = None
-            self._for_loop_list: list[tuple[_ty.Callable[[_ty.Any], _ty.Any], tuple[_ty.Any]]] | None = None
-            self._running_tasks: set[str] | None = None  # Only ever accessed in main thread
-            self.max_collections_per_timer_tick: int = 5
+            self.offloader: Offloader | None = None
             if setup_thread_pool:
-                # TODO: Migrate
-                from aplustools.io.concurrency import LazyDynamicThreadPoolExecutor, ThreadSafeList
-                # Thread pool
-                self.pool = LazyDynamicThreadPoolExecutor(0, 2, 1.0, 1)
-                self._for_loop_list = ThreadSafeList()
-                self._running_tasks = set()
+                self.offloader = Offloader()
         except Exception as e:
             raise Exception("Exception occurred during initialization of the Main class") from e
 
-    def _check_pool(self) -> bool:
-        return not (self.pool is None or self._for_loop_list is None)
-
-    def _ensure_pool(self) -> None:
-        if not self._check_pool():
+    def _ensure_offloader(self) -> None:
+        if self.offloader is None:
             raise RuntimeError("Pool or/and for loop list is/are not initialized")
 
-    def offload_work(self, task_name: str, task_collection_func: _a.Callable, task: _a.Callable[[], tuple[...]]) -> None:
-        self._ensure_pool()
-        if task_name in self._running_tasks:
-            raise RuntimeError(f"Cannot have two tasks with the name '{task_name}' running at the same time.")
-        self._running_tasks.add(task_name)
-        self.pool.submit(lambda:
-                             self._for_loop_list.append(
-                                 (task_name, task_collection_func, task())
-                             )
-                         )
+    def offload_work(self, task_name: str, task_collection_func: _a.Callable, task: _a.Callable[[], tuple]) -> None:
+        """Offloads work to self.offloader"""
+        self._ensure_offloader()
+        self.offloader.offload_work(task_name, task_collection_func, task)  # type: ignore
 
     def wait_for_completion(self, task_name: str, /, check_interval: float = 1.0) -> None:
-        self._ensure_pool()
-        while task_name in self._running_tasks:
-            time.sleep(check_interval)
+        """Waits for a task with a certain name to complete"""
+        self._ensure_offloader()
+        self.offloader.wait_for_completion(task_name, check_interval=check_interval)  # type: ignore
 
     def wait_for_manual_completion(self, task_name: str, /, check_interval: float = 1.0) -> None:
-        self._ensure_pool()
-        while task_name in self._running_tasks:
-            time.sleep(check_interval)
-            if self._for_loop_list:
-                entry = self._for_loop_list.pop()
-                name, func, args = entry
-                func(*args)
-                self._running_tasks.remove(name)
+        """Waits manually for a certain task to complete by working down the task results itself"""
+        self._ensure_offloader()
+        self.offloader.wait_for_manual_completion(task_name, check_interval=check_interval)  # type: ignore
 
     def timer_tick(self) -> None:
-        if self._check_pool():
-            num_handled: int = 0
-            while len(self._for_loop_list) > 0 and num_handled < self.max_collections_per_timer_tick:
-                entry = self._for_loop_list.pop()
-                name, func, args = entry
-                func(*args)
-                self._running_tasks.remove(name)
-                num_handled += 1
+        """Does stuff that needs to be done periodically"""
+        if self.offloader is not None:
+            self.offloader.tick()
 
     def close(self) -> None:
-        if hasattr(self, "pool") and self.pool is not None:
-            self.pool.shutdown()
+        if hasattr(self, "offloader") and self.offloader is not None:
+            self.offloader.shutdown()
 
 class DefaultAppTUI(DefaultApp):
     def __init__(self, log_filepath: str | None, parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False) -> None:
@@ -158,40 +144,35 @@ class DefaultServerTUI(DefaultAppTUI):
         #     print(line)
         return self.always_restart
 
-class DefaultAppGUI(DefaultApp):
+class DefaultThemedApp(DefaultApp):
     def __init__(self, logs_directory: str, parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False) -> None:
         super().__init__(parsed_args, logging_level, setup_thread_pool=setup_thread_pool)
         try:
-            # self.update_check_url: str = update_check_url  # TODO: Create class UpdateChecker
             self.io_manager: io.IOManager = AdvancedLogger(logs_directory, self.prompt_user, logging_level)
 
             self.system: io.BaseSystemType = io.get_system()
             self.os_theme: io.SystemTheme = self.get_os_theme()
             self.update_theme(self.os_theme)
-
-            # if self.INFORM_ABOUT_UPDATE_INFO_FORMAT:
-            #     print("INFORMATION ABOUT UPDATE INFO FORMAT:: https://raw.githubusercontent.com/Giesbrt/Automaten/main/meta/update_check.json")
-            # if self.CHECK_FOR_UPDATE:
-            # result = self.get_update_result()
-            # self.show_update_result(result)
         except Exception as e:
             raise Exception("Exception occurred during initialization of the Main class") from e
 
     def open_url(self, url: str) -> None:
+        """Opens the given url in a browser"""
         raise NotImplementedError()
 
-    def get_os_theme(self) -> SystemTheme:
+    def get_os_theme(self) -> io.SystemTheme:
         """Gets the os theme based on a number of parameters, like environment variables."""
         base = self.system.get_system_theme()
         if not base:
             raw_fallback = str(os.environ.get("DANCER_BACKUP_THEME")).lower()  # Can return None
-            fallback = {"light": SystemTheme.LIGHT, "dark": SystemTheme.DARK}.get(raw_fallback)
+            fallback = {"light": io.SystemTheme.LIGHT, "dark":io. SystemTheme.DARK}.get(raw_fallback)
             if fallback is None:
-                return SystemTheme.LIGHT
+                return io.SystemTheme.LIGHT
             return fallback
         return base
 
-    def update_theme(self, new_theme: SystemTheme) -> None:
+    def update_theme(self, new_theme: io.SystemTheme) -> None:
+        """Does tasks that need to be done if the theme changes"""
         self.os_theme = new_theme
 
     def timer_tick(self) -> None:

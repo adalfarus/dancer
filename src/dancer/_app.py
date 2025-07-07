@@ -5,7 +5,7 @@ import logging
 import sys
 import os
 
-from . import config, __version__
+from . import config
 
 from collections import abc as _a
 import typing as _ty
@@ -95,6 +95,7 @@ def start(main_class: _ty.Type[MainClass], arg_parser: _Ag | None = None, exit_c
     args = arg_parser.parse_args()
 
     if args.version:
+        from . import __version__
         print(f"Dancer {__version__} running {config.PROGRAM_NAME} {config.get_version_str()}")
         return
 

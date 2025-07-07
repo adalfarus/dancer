@@ -53,8 +53,8 @@ where = ["src"]
 
 [project]
 name = "dancer"
-version = "0.0.0.1a2"
-dependencies = ["packaging", "typing_extensions", "requests"]
+version = "0.0.0.1a3"
+dependencies = ["packaging", "typing_extensions", "requests", "aplustools[all]>=2.0.0.0b1"]
 requires-python = ">= 3.10"
 authors = [
   {name = "Cariel Becker", email = "cariel.becker@gmx.de"},
@@ -73,7 +73,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-qt = ["PySide6>=6.7.0", "aplustools[all]>=2.0.0.0b1"]
+qt = ["PySide6>=6.7.0"]
 dev = ["pytest"]
 
 [project.urls]

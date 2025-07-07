@@ -19,7 +19,7 @@ PY_LIST: list[tuple[int, int]] #  = [(3, 10), (3, 11), (3, 12), (3, 13)]
 DIR_STRUCTURE: _DirectoryTree
 LOCAL_MODULE_LOCATIONS: list[str]
 
-RUNTIME_FILE_EXTENSIONS: tuple[str] = (
+RUNTIME_FILE_EXTENSIONS: tuple[str, ...] = (
     ".json",
     ".yml", ".yaml",
     ".ini",
@@ -74,6 +74,7 @@ def is_compiled() -> bool:
     return getattr(sys, "frozen", False) and (hasattr(sys, "_MEIPASS") or sys.executable.endswith(".exe"))
 
 def get_version_str() -> str:
+    """Returns VERSION + VERSION_ADD as a string"""
     return str(VERSION) + VERSION_ADD
 
 def _configure() -> dict[str, str]:
