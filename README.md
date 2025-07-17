@@ -9,7 +9,7 @@
 [//]: # (    <p style="margin: 0 0 0 2vw; font-size: 10vw; color: #3b4246;">Dancer</p>)
 
 [//]: # (</div>)
-<img src="project_data/img.png">
+<img src="https://github.com/adalfarus/dancer/blob/main/project_data/img.png">
 
 dancer is a simple, and user-friendly Python library for creating competent apps.
 
