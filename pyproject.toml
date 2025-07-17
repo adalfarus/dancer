@@ -53,8 +53,8 @@ where = ["src"]
 
 [project]
 name = "dancer"
-version = "0.0.0.1a3"
-dependencies = ["packaging", "typing_extensions", "requests", "aplustools[all]>=2.0.0.0b1"]
+version = "0.0.0.1a4"
+dependencies = ["packaging", "typing_extensions", "requests", "aplustools[all]~=2.0.0.0"]
 requires-python = ">= 3.10"
 authors = [
   {name = "Cariel Becker", email = "cariel.becker@gmx.de"},
