@@ -52,7 +52,7 @@ where = ["src"]
 ]
 
 [project]
-name = "dancer"
+name = "dncer"  # Temp name until dancer becomes available
 version = "0.0.0.1a4"
 dependencies = ["packaging", "typing_extensions", "requests", "aplustools[all]~=2.0.0.0"]
 requires-python = ">= 3.10"
