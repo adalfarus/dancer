@@ -3,13 +3,21 @@ from dataclasses import dataclass
 import logging
 import sys
 import time
+import json
+from traceback import format_exc as _format_exc
+import os
+
+from packaging.version import Version as _Version, InvalidVersion as _InvalidVersion
+import requests
+from aplustools.io import SingletonMeta
+from aplustools.io.fileio import os_open
 
 from . import config, io
 
 from collections import abc as _a
 import typing as _ty
 
-__all__ = ["DefaultLogger", "AdvancedLogger", "Offloader", "UpdateResult", "UpdateChecker"]
+__all__ = ["DefaultLogger", "AdvancedLogger", "Offloader", "UpdateResult", "UpdateChecker", "Translator", "Translation"]
 
 
 def DefaultLogger(log_filepath: str | None, logging_level: int) -> io.ActLogger:
@@ -249,3 +257,61 @@ class UpdateChecker:
             # if self.CHECK_FOR_UPDATE:
             # result = self.get_update_result()
             # self.show_update_result(result)
+
+class Translation(metaclass=SingletonMeta): ...
+
+class Translator(metaclass=SingletonMeta):
+    def __init__(self, localisation_dir: str) -> None:
+        self.localisation_dir: str = localisation_dir
+        self.localisations: dict[str, str] = {}
+        self._tr: _ty.Type[Translation] | None = None
+        self.loaded_localisation: str = ""
+        self.reload_localisations()
+
+    def reload_localisations(self) -> None:
+        self.localisations.clear()
+        for file in os.listdir(self.localisation_dir):
+            self.localisations[file.removesuffix(".json")] = file
+        return None
+
+    def set_translation_cls(self, translation_cls: _ty.Type[Translation]) -> None:
+        if not issubclass(translation_cls, Translation):
+            raise ValueError(f"The parameter translation_cls needs to be of type Translation")
+        self._tr = translation_cls
+
+    def check_localisations(self) -> None:
+        current_localisation: str = self.loaded_localisation
+        for localisation in self.localisations.keys():
+            self.load(localisation)
+        self.load(current_localisation)
+        return None
+
+    def load(self, localisation: str) -> None:
+        file: str | None = self.localisations.get(localisation)
+        if file is None:
+            raise ValueError(f"The localisation for '{localisation}' is not currently loaded")
+        filepath: str = os.path.join(self.localisation_dir, file)
+
+        translation: dict[str, str]
+        with os_open(filepath, "r") as f:
+            try:
+                translation = json.loads(f.read())
+            except json.JSONDecodeError as e:
+                raise RuntimeError(f"Failed to parse localisation file '{filepath}'") from e
+
+        if self._tr is None:
+            raise RuntimeError("You need to set self.tr before you can load a translation. "
+                               "Tr exists to enable type hinting.")
+
+        keys: set[str] = set()
+        keys.update(dir(self._tr))
+        keys.update(self._tr.__annotations__.keys())
+
+        for key in keys:
+            if not key.startswith("_"):
+                value: str | None = translation.get(key)
+                if value is None:
+                    raise RuntimeError(f"The key '{key}' was not provided by the translation for '{localisation}'")
+                setattr(self._tr, key, value)
+        self.loaded_localisation = localisation
+        return None

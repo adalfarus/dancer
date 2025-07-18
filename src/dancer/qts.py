@@ -1,4 +1,4 @@
-"""Here we can expose what we want to be used outside"""
+"""Qt-Styling module"""
 from string import Template, ascii_letters, digits
 import os
 import re

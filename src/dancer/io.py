@@ -589,7 +589,7 @@ class IOManager(metaclass=SingletonMeta):
         if print_log:
             self._logger.info(f"{log_message} {f'({description})' if description else ''}")
 
-        if ActLogger().logging_level > INFO:
+        if ActLogger().logging_level > logging.INFO:
             return
 
         self._handle_prompt(show_prompt, title, log_message, description, "information", custom_options)
@@ -614,7 +614,7 @@ class IOManager(metaclass=SingletonMeta):
         if print_log:
             self._logger.warning(f"{log_message} {f'({description})' if description else ''}")
 
-        if ActLogger().logging_level > WARNING:
+        if ActLogger().logging_level > logging.WARNING:
             return
 
         self._handle_prompt(show_prompt, title, log_message, description, "warning", custom_options)
@@ -656,7 +656,7 @@ class IOManager(metaclass=SingletonMeta):
         if print_log:
             self._logger.error(f"{str(error_severity)}: {log_message} {f'({description})' if description else ''}")
 
-        if ActLogger().logging_level > ERROR:
+        if ActLogger().logging_level > logging.ERROR:
             return
 
         self._handle_prompt(show_prompt, title, log_message, description, "error", custom_options)
@@ -688,7 +688,7 @@ class IOManager(metaclass=SingletonMeta):
         if print_log:
             self._logger.debug(f"{log_message} {f'({description})' if description else ''}")
 
-        if ActLogger().logging_level > DEBUG:
+        if ActLogger().logging_level > logging.DEBUG:
             return
 
         self._handle_prompt(show_prompt, title, log_message, description, "debug", custom_options)

@@ -10,7 +10,7 @@ import os
 
 from ._default_apps import DefaultThemedApp as _DefaultThemedApp
 from .qts import assign_object_names_iterative, AbstractMainWindow, AppStyle, Style, Theme
-from .io import SystemTheme, get_system
+from .io import SystemTheme, get_system, IOManager
 
 # Standard typing imports for aps
 import collections.abc as _a

@@ -6,7 +6,7 @@ import sys
 import os
 
 import typing as _ty
-_DirectoryTree = dict[str, _ty.Union["DirectoryTree", None]]
+_DirectoryTree = dict[str, _ty.Union["_DirectoryTree", None]]
 
 INDEV: bool# = False
 INDEV_KEEP_RUNTIME_FILES: bool# = True
