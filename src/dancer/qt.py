@@ -17,7 +17,8 @@ import collections.abc as _a
 import typing as _ty
 import types as _ts
 
-__all__ = ["QQuickMessageBox", "QBoxDirection", "QNoSpacingBoxLayout", "QtTimidTimer", "BasicAppGUIQt", "DefaultAppGUIQt"]
+__all__ = ["QQuickMessageBox", "QBoxDirection", "QNoSpacingBoxLayout", "QtTimidTimer", "BasicAppGUIQt",
+           "DefaultAppGUIQt", "QtAppSettings"]
 
 MBoxIcon = _QMessageBox.Icon
 MBoxButton = _QMessageBox.StandardButton
@@ -176,7 +177,7 @@ class QtAppSettings(_QObject):
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(AppSettings, cls).__new__(cls)
+            cls._instance = super(QtAppSettings, cls).__new__(cls)
             # cls._instance._initialized = False  # Track initialization state
         return cls._instance
 
@@ -186,69 +187,73 @@ class QtAppSettings(_QObject):
         super().__init__()
         self._initialized = True
 
-    def init(self) -> None:
+    def _initialize(self) -> None:
+        raise NotImplementedError()
+
+    def init(self, *args, **kwargs) -> None:
         """Initializes the AppSettings"""
         if self.setup:  # Prevent reinitialization
             return
-        # Do some stuff ...
+        self._initialize(*args, **kwargs)
         self._set_default_settings()
         self.setup = True
 
     def _set_default_settings(self) -> None:
         raise NotImplementedError()
 
-    def _retrieve(self, name: str) -> _ty.Any:
+    def _retrieve(self, category: str, name: str) -> _ty.Any:
         raise NotImplementedError()
-    def _store(self, name: str, value: _ty.Any) -> None:
+    def _store(self, category: str, name: str, value: _ty.Any) -> None:
         raise NotImplementedError()
 
     # Settings Methods
     def get_test_setting(self) -> str:
-        return self._retrieve("test_setting")
+        return self._retrieve("test", "test_setting")
     def set_test_setting(self, test_setting: str) -> None:
-        self._store("test_setting", test_setting)
+        self._store("test", "test_setting", test_setting)
         self.test_setting_changed.emit(test_setting)
     # general
     def get_app_language(self) -> str:
-        return self._retrieve("app_language")
+        return self._retrieve("general", "app_language")
     def set_app_language(self, app_language: str) -> None:
-        self._store("app_language", app_language)
+        self._store("general", "app_language", app_language)
         self.app_language_changed.emit(app_language)
+    # automatic
     def get_window_geometry(self) -> tuple[int, int, int, int]:
-        return self._retrieve("window_geometry")  # type: ignore
+        return self._retrieve("automatic", "window_geometry")  # type: ignore
     def set_window_geometry(self, window_geometry: tuple[int, int, int, int]) -> None:
-        self._store("window_geometry", window_geometry)
+        self._store("automatic", "window_geometry", window_geometry)
         self.window_geometry_changed.emit(window_geometry)
-    def get_save_window_dimensions(self) -> bool:
-        return self._retrieve("save_window_dimensions")  # type: ignore
-    def set_save_window_dimensions(self, flag: bool) -> None:
-        self._store("save_window_dimensions", flag)
-        self.save_window_dimensions_changed.emit(flag)
-    def get_save_window_position(self) -> bool:
-        return self._retrieve("save_window_position")  # type: ignore
-    def set_save_window_position(self, flag: bool) -> None:
-        self._store("save_window_position", flag)
-        self.save_window_position_changed.emit(flag)
     # design
     def get_theming(self, mode: SystemTheme) -> str:
         theming_type: str = {SystemTheme.LIGHT: "light_theming",
                              SystemTheme.DARK: "dark_theming"}[mode]
-        return self._retrieve(theming_type)
+        return self._retrieve("design", theming_type)
     def set_theming(self, mode: SystemTheme, theming: str) -> None:
         theming_type: str = {SystemTheme.LIGHT: "light_theming",
                              SystemTheme.DARK: "dark_theming"}[mode]
-        self._store(theming_type, theming)
+        self._store("design", theming_type, theming)
         getattr(self, f"{theming_type}_changed").emit(theming)
     def get_font(self) -> str:
-        return self._retrieve("font")
+        return self._retrieve("design", "font")
     def set_font(self, font: str) -> None:
-        self._store("font", font)
+        self._store("design", "font", font)
         self.font_changed.emit(font)
     # advanced
+    def get_save_window_dimensions(self) -> bool:
+        return self._retrieve("advanced", "save_window_dimensions")  # type: ignore
+    def set_save_window_dimensions(self, flag: bool) -> None:
+        self._store("advanced", "save_window_dimensions", flag)
+        self.save_window_dimensions_changed.emit(flag)
+    def get_save_window_position(self) -> bool:
+        return self._retrieve("advanced", "save_window_position")  # type: ignore
+    def set_save_window_position(self, flag: bool) -> None:
+        self._store("advanced", "save_window_position", flag)
+        self.save_window_position_changed.emit(flag)
     def get_logging_mode(self) -> str:
-        return self._retrieve("logging_mode")
+        return self._retrieve("advanced", "logging_mode")
     def set_logging_mode(self, logging_mode: str) -> None:
-        self._settings.store("logging_mode", logging_mode)
+        self._settings.store("advanced", "logging_mode", logging_mode)
         self.logging_mode_changed.emit(logging_mode)
 
 
@@ -350,13 +355,12 @@ class BasicAppGUIQt(_DefaultThemedApp):
 
 
 class DefaultAppGUIQt(BasicAppGUIQt):
-    def __init__(self, window: _ty.Type[AbstractMainWindow], settings: QtAppSettings, themes_directory: str, styles_directory: str, logs_directory: str,
+    def __init__(self, themes_directory: str, styles_directory: str, logs_directory: str,
                  parsed_args: _Ns, logging_level: int, /, setup_thread_pool: bool = False, setup_theming: bool = True) -> None:
         super().__init__(logs_directory, parsed_args, logging_level, setup_thread_pool=setup_thread_pool)
         try:
-            self.window: AbstractMainWindow = window()
-            self.parent = self.window.internal_obj()
-            self.settings: QtAppSettings = settings
+            self.window: AbstractMainWindow
+            self.settings: QtAppSettings
 
             # Setup window
             # self.system: BaseSystemType = get_system()
@@ -368,19 +372,6 @@ class DefaultAppGUIQt(BasicAppGUIQt):
             if setup_theming:
                 self.load_themes(self.themes_directory)
                 self.load_styles(self.styles_directory)
-
-            self.window.setup_gui()
-
-            x, y, width, height = self.settings.get_window_geometry()
-            if not self.settings.get_save_window_dimensions():
-                width = 1050
-                height = 640
-            if self.settings.get_save_window_position():
-                self.window.set_window_geometry(x, y + 31, width, height)  # Somehow saves it as 31 pixels less,
-            else:  # I guess windows does some weird shit with the title bar
-                self.window.set_window_dimensions(width, height)
-
-            assign_object_names_iterative(self.window.internal_obj())  # Set object names for theming
         except Exception as e:
             raise Exception("Exception occurred during initialization of the Main class") from e
 
@@ -441,6 +432,21 @@ class DefaultAppGUIQt(BasicAppGUIQt):
             self.check_theme_change()
 
     def exec(self) -> int:
+        self.parent = self.window.internal_obj()
+
+        self.window.setup_gui()
+
+        x, y, width, height = self.settings.get_window_geometry()
+        if not self.settings.get_save_window_dimensions():
+            width = 1050
+            height = 640
+        if self.settings.get_save_window_position():
+            self.window.set_window_geometry(x, y + 31, width, height)  # Somehow saves it as 31 pixels less,
+        else:  # I guess windows does some weird shit with the title bar
+            self.window.set_window_dimensions(width, height)
+
+        assign_object_names_iterative(self.window.internal_obj())  # Set object names for theming
+
         self.window.app = self.qapp
         self.apply_theme()
         self.window.start()  # Shows gui

@@ -81,9 +81,15 @@ class MainClass(_ty.Protocol):
 def start(main_class: _ty.Type[MainClass], arg_parser: _Ag | None = None, exit_codes: dict[int, _a.Callable[[], None]] | None = None) -> None:
     """Starts the app and handles error catching"""
     if exit_codes is None:
-        exit_codes = {
-        1000: lambda: os.execv(sys.executable, [sys.executable] + sys.argv[1:])  # RESTART_CODE (only works compiled)
-    }
+        sys.argv[0] = os.path.join(config.old_cwd, sys.argv[0])
+        if config.is_compiled():
+            exit_codes = {
+                1000: lambda: os.execv(sys.executable, [sys.executable] + sys.argv[1:])  # RESTART_CODE (only works compiled)
+            }
+        else:
+            exit_codes = {
+                1000: lambda: os.execv(sys.executable, [sys.executable] + sys.argv)  # RESTART_CODE (only works uncompiled)
+            }
     if arg_parser is None:
         arg_parser = _Ag(description=f"{config.PROGRAM_NAME}")
     dp_app: MainClass | None = None
