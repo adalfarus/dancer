@@ -6,7 +6,7 @@ from ._default_modules import *
 
 import typing as _ty
 
-__version__ = "0.0.0.1a6"
+__version__ = "0.0.0.1a7"
 
 
 _globs: dict[str, _ty.Any] = {}
