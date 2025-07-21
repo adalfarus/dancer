@@ -193,6 +193,7 @@ def check() -> RuntimeError | None:
     if platform_versions is None:
         exit_code, exit_message = 1, (f"You are currently on {platform.system()}. "
                                       f"Please run this on a supported OS ({', '.join(OS_LIST.keys())}).")
+        return RuntimeError(exit_message)
 
     used_os_major_version: str | None = None
     used_os_minor_version: str | None = None
