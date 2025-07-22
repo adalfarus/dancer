@@ -1,21 +1,27 @@
 """Configures your environment"""
+import enum
+import warnings
 from dataclasses import dataclass as _dc
 import platform
 import shutil
 import sys
 import os
+import re
 
 import typing as _ty
 _DirectoryTree = dict[str, _ty.Union["_DirectoryTree", None]]
 
-INDEV: bool# = False
-INDEV_KEEP_RUNTIME_FILES: bool# = True
-PROGRAM_NAME: str #= "ContentView"
-VERSION: int #= 100
-VERSION_ADD: str #= "a0"
-PROGRAM_NAME_NORMALIZED: str # = f"{PROGRAM_NAME.lower().replace(' ', '_')}_{VERSION}{VERSION_ADD}"
-OS_LIST: dict[str, dict[str, tuple[str, ...]]]  #  = {"Windows": {"10": ("any",), "11": ("any",)}}
-PY_LIST: list[tuple[int, int]] #  = [(3, 10), (3, 11), (3, 12), (3, 13)]
+INDEV: bool
+INDEV_KEEP_RUNTIME_FILES: bool
+COMPILE_TIME_FLAGS: bool
+PROGRAM_NAME: str
+VERSION: int
+VERSION_ADD: str
+PROGRAM_NAME_NORMALIZED: str
+WORKING_OS_LIST: dict[str, dict[str, tuple[str, ...]]]
+UNTESTED_OS_LIST: dict[str, dict[str, tuple[str, ...]]]
+INCOMPATIBLE_OS_LIST: dict[str, dict[str, tuple[str, ...]]]
+PY_LIST: list[tuple[int, int]]
 DIR_STRUCTURE: _DirectoryTree
 LOCAL_MODULE_LOCATIONS: list[str]
 
@@ -84,6 +90,11 @@ def _configure() -> dict[str, str]:
             sys.stdout = open(os.devnull, "w")
         if not sys.stderr:
             sys.stderr = open(os.devnull, "w")
+
+    if COMPILE_TIME_FLAGS:
+        import multiprocessing
+        multiprocessing.freeze_support()
+
     accumulated_logs = "Starting cloning of defaults ...\n"
     old_cwd = os.getcwd()
     install_dir = os.path.join(old_cwd, "default-config")  # TODO: Use systems stuff
@@ -151,68 +162,132 @@ def _configure() -> dict[str, str]:
     }
 
 @_dc(frozen=True)
-class AppInfo:
+class AppConfig:
     """Contains all info on the app"""
     INDEV: bool
     INDEV_KEEP_RUNTIME_FILES: bool
+    COMPILE_TIME_FLAGS: bool
     PROGRAM_NAME: str
     PROGRAM_NAME_NORMALIZED: str
     VERSION: int
     VERSION_ADD: str
-    OS_LIST: dict[str, dict[str, tuple[str, ...]]]
+    WORKING_OS_LIST: dict[str, dict[str, tuple[str, ...]]]
+    UNTESTED_OS_LIST: dict[str, dict[str, tuple[str, ...]]]
+    INCOMPATIBLE_OS_LIST: dict[str, dict[str, tuple[str, ...]]]
     PY_LIST: list[tuple[int, int]]
     DIR_STRUCTURE: _DirectoryTree
     LOCAL_MODULE_LOCATIONS: list[str]
 
-def configure(app_info: AppInfo) -> None:
+def configure(app_config: AppConfig) -> None:
     """Configures all the information into the config module"""
-    global INDEV, INDEV_KEEP_RUNTIME_FILES, PROGRAM_NAME, VERSION, VERSION_ADD, PROGRAM_NAME_NORMALIZED, \
-        OS_LIST, PY_LIST, DIR_STRUCTURE, LOCAL_MODULE_LOCATIONS
-    INDEV = app_info.INDEV
-    INDEV_KEEP_RUNTIME_FILES = app_info.INDEV_KEEP_RUNTIME_FILES
-    PROGRAM_NAME = app_info.PROGRAM_NAME
-    VERSION = app_info.VERSION
-    VERSION_ADD = app_info.VERSION_ADD
-    PROGRAM_NAME_NORMALIZED = app_info.PROGRAM_NAME_NORMALIZED
-    OS_LIST = app_info.OS_LIST
-    PY_LIST = app_info.PY_LIST
-    DIR_STRUCTURE = app_info.DIR_STRUCTURE
-    LOCAL_MODULE_LOCATIONS = app_info.LOCAL_MODULE_LOCATIONS
+    global INDEV, INDEV_KEEP_RUNTIME_FILES, COMPILE_TIME_FLAGS, PROGRAM_NAME, VERSION, VERSION_ADD, \
+        PROGRAM_NAME_NORMALIZED,  WORKING_OS_LIST, UNTESTED_OS_LIST, INCOMPATIBLE_OS_LIST, PY_LIST, DIR_STRUCTURE, \
+        LOCAL_MODULE_LOCATIONS
+    INDEV = app_config.INDEV
+    INDEV_KEEP_RUNTIME_FILES = app_config.INDEV_KEEP_RUNTIME_FILES
+    COMPILE_TIME_FLAGS = app_config.COMPILE_TIME_FLAGS
+    PROGRAM_NAME = app_config.PROGRAM_NAME
+    VERSION = app_config.VERSION
+    VERSION_ADD = app_config.VERSION_ADD
+    PROGRAM_NAME_NORMALIZED = app_config.PROGRAM_NAME_NORMALIZED
+    WORKING_OS_LIST = app_config.WORKING_OS_LIST
+    UNTESTED_OS_LIST = app_config.UNTESTED_OS_LIST
+    INCOMPATIBLE_OS_LIST = app_config.INCOMPATIBLE_OS_LIST
+    PY_LIST = app_config.PY_LIST
+    DIR_STRUCTURE = app_config.DIR_STRUCTURE
+    LOCAL_MODULE_LOCATIONS = app_config.LOCAL_MODULE_LOCATIONS
 
-def check() -> RuntimeError | None:
+class OSListExitState(enum.Enum):
+    SystemNotSupported = 0
+    ReleaseNotSupported = 1
+    VersionNotSupported = 2
+    ReleaseOrVersionNotSupported = 3
+    Supported = 4
+
+def _check_os_list(system: str, release: str, version: str, os_list: dict[str, dict[str, tuple[str, ...]]]) -> tuple[OSListExitState, str, str]:
+    platform_versions: dict[str, tuple[str, ...]] | None = os_list.get(system, None)
+
+    if platform_versions is None:
+        return OSListExitState.SystemNotSupported, "", ""
+
+    used_os_major_version: str | None = None
+    used_os_minor_version: str | None = None
+    for possible_major, possible_minors in platform_versions.items():
+        if re.fullmatch(possible_major, release):
+            matches = [re.fullmatch(possible_minor, version) is not None for possible_minor in
+                       possible_minors]
+
+            if any(matches) or possible_minors == ("any",):
+                used_os_minor_version = release
+                used_os_major_version = version
+                break
+
+    if used_os_major_version is None or used_os_minor_version is None:
+        return OSListExitState.ReleaseOrVersionNotSupported, "", ""
+    return OSListExitState.Supported, used_os_major_version, used_os_minor_version  # Currently, this is redundant, maybe not in the future
+
+def _format_os_list(os_list: dict[str, dict[str, tuple[str, ...]]]) -> str:
+    return ", ".join(os_list.keys())
+
+def check() -> RuntimeError | UserWarning | str:
     """Check if environment is suitable"""
     global CHECK_DONE, exit_code, exit_message
 
     if CHECK_DONE:
-        return None
+        return "None"
     CHECK_DONE = True
 
-    exit_code, exit_message = 0, "An unknown error occurred"
-    platform_versions: dict[str, tuple[str, ...]] | None = OS_LIST.get(platform.system(), None)
+    exit_code, exit_message = 1, "An unknown error occurred"
 
-    if platform_versions is None:
-        exit_code, exit_message = 1, (f"You are currently on {platform.system()}. "
-                                      f"Please run this on a supported OS ({', '.join(OS_LIST.keys())}).")
-        return RuntimeError(exit_message)
+    system, release, version = platform.system(), platform.release(), platform.version()
+    full_config = f"{system} {release}{version}"
 
-    used_os_major_version: str | None = None
-    used_os_minor_version: str | None = None
-    for possible_major, possible_minors in platform_versions.items():  # type: ignore
-        if platform.release() in possible_major and (platform.version() in possible_minors or possible_minors == ("any",)):
-            used_os_minor_version = possible_major
-            used_os_major_version = platform.version()
-            break
-    if used_os_major_version is None or used_os_minor_version is None:
-        exit_code, exit_message = 1, (f"You are currently on {platform.release()}{platform.version()}. "
-                                      f"Please run this on a supported OS version.")
+    # Check for incompatible configuration first
+    incompatible_state, _, _ = _check_os_list(system, release, version, INCOMPATIBLE_OS_LIST)
+    if incompatible_state == OSListExitState.Supported:
+        exit_code = 1  # Exit code 1 means an error
+        exit_message = (
+            f"Your current configuration ({full_config}) is incompatible with this program, please try with a "
+            f"configuration that is supported ({_format_os_list(UNTESTED_OS_LIST)} / "
+            f"{_format_os_list(WORKING_OS_LIST)})"
+        )
+
+    # Check for untested but supported configuration
+    untested_state, _, _ = _check_os_list(system, release, version, UNTESTED_OS_LIST)
+    if untested_state == OSListExitState.Supported:
+        exit_code = 2  # Exit Code 2 means a warning
+        exit_message = (
+            f"Your current configuration ({full_config}) is supported by this program, but untested. Consider using a "
+            f"tested configuration ({_format_os_list(WORKING_OS_LIST)})"
+        )
+
+    working_state, _, _ = _check_os_list(system, release, version, WORKING_OS_LIST)
+    if working_state == OSListExitState.SystemNotSupported:
+        exit_code = 1
+        exit_message = (
+            f"You are currently on {platform.system()}. Please run this on a supported OS "
+            f"({', '.join(WORKING_OS_LIST.keys())})."
+        )
+    elif working_state == OSListExitState.ReleaseOrVersionNotSupported:
+        exit_code = 1
+        exit_message = (
+            f"You are currently on {full_config}. Use a supported release/version for {system} "
+            f"({WORKING_OS_LIST[system]})."
+        )
+    elif working_state == OSListExitState.Supported:
+        exit_code = 0
+        exit_message = f"{full_config} with Python {sys.version_info[0]}.{sys.version_info[1]} is fully supported."
 
     if sys.version_info[:2] not in PY_LIST:
         py_versions_strs = [f"{major}.{minor}" for (major, minor) in PY_LIST]
         exit_code, exit_message = 1, (f"You are currently on {'.'.join([str(x) for x in sys.version_info])}. "
                                       f"Please run this using a supported python version ({', '.join(py_versions_strs)}).")
-    if exit_code:
+
+    if exit_code == 1:
         return RuntimeError(exit_message)
-    return None
+    elif exit_code == 2:
+        return UserWarning(exit_message)
+    return exit_message
 
 def setup() -> None:
     """Setup the app, this does not include checking for compatibility"""
@@ -226,10 +301,18 @@ def setup() -> None:
                                             exported_vars["old_cwd"])
     return None
 
-def do(app_info: AppInfo) -> None:
+def do(app_info: AppConfig) -> None:
     """Does the three steps configure, check setup at once."""
     configure(app_info)
     err = check()
-    if err is not None:
+    if isinstance(err, RuntimeError):
         raise err
+    elif isinstance(err, UserWarning):
+        warnings.warn(
+            str(err),
+            type(err),
+            stacklevel=2
+        )
+    else:
+        print(err)
     setup()
