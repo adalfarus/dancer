@@ -83,6 +83,36 @@ def get_version_str() -> str:
     """Returns VERSION + VERSION_ADD as a string"""
     return str(VERSION) + VERSION_ADD
 
+# From aplustools.io.env
+def _get_appdata_dir(app_dir: str, scope: _ty.Literal["user", "global"] = "global"):
+    system = platform.system()
+    if system == "Windows":
+        if scope == "user":
+            return os.path.join(
+                os.environ.get("APPDATA"), app_dir
+            )  # App data for the current user
+        return os.path.join(
+            os.environ.get("PROGRAMDATA"), app_dir
+        )  # App data for all users
+    elif system == "Darwin":
+        if scope == "user":
+            return os.path.join(
+                os.path.expanduser("~"), "Library", "Application Support", app_dir
+            )  # App data for the current user
+        return os.path.join(
+            "/Library/Application Support", app_dir
+        )  # App data for all users
+    elif system == "Linux":
+        if scope == "user":
+            return os.path.join(
+                os.path.expanduser("~"), ".local", "share", app_dir
+            )  # App data for the current user
+        return os.path.join("/usr/local/share", app_dir)  # App data for all users
+    elif system == "FreeBSD":
+        if scope == "user":
+            return os.path.join(os.path.expanduser("~"), ".local", "share", app_dir)
+        return os.path.join("/usr/local/share", app_dir)
+
 def _configure() -> dict[str, str]:
     if is_compiled():
         os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -97,8 +127,8 @@ def _configure() -> dict[str, str]:
 
     accumulated_logs = "Starting cloning of defaults ...\n"
     old_cwd = os.getcwd()
-    install_dir = os.path.join(old_cwd, "default-config")  # TODO: Use systems stuff
-    base_app_dir = os.path.join(os.environ.get("LOCALAPPDATA", "."), f"{PROGRAM_NAME_NORMALIZED}_{VERSION}{VERSION_ADD}")
+    install_dir = os.path.join(old_cwd, "default-config")
+    base_app_dir = _get_appdata_dir(f"{PROGRAM_NAME_NORMALIZED}_{VERSION}{VERSION_ADD}", "user")
 
     if INDEV and os.path.exists(base_app_dir):  # Remove everything to simulate a fresh install
         if not INDEV_KEEP_RUNTIME_FILES:

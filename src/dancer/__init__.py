@@ -6,7 +6,7 @@ from ._default_modules import *
 
 import typing as _ty
 
-__version__ = "0.0.0.1a8"
+__version__ = "0.0.0.1a9"
 
 from dataclasses import dataclass as _dc
 _DirectoryTree = dict[str, _ty.Union["_DirectoryTree", None]]
