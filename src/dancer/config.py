@@ -270,10 +270,13 @@ def check() -> RuntimeError | UserWarning | str:
     exit_code, exit_message = 1, "An unknown error occurred"
 
     system, release, version = platform.system(), platform.release(), platform.version()
-    full_config = f"{system} {release}{version}"
+    full_config = f"{system} {release} {version}"
 
     # Check for incompatible configuration first
     incompatible_state, _, _ = _check_os_list(system, release, version, INCOMPATIBLE_OS_LIST)
+    # Check for untested but supported configuration
+    untested_state, _, _ = _check_os_list(system, release, version, UNTESTED_OS_LIST)
+    working_state, _, _ = _check_os_list(system, release, version, WORKING_OS_LIST)
     if incompatible_state == OSListExitState.Supported:
         exit_code = 1  # Exit code 1 means an error
         exit_message = (
@@ -281,18 +284,13 @@ def check() -> RuntimeError | UserWarning | str:
             f"configuration that is supported ({_format_os_list(UNTESTED_OS_LIST)} / "
             f"{_format_os_list(WORKING_OS_LIST)})"
         )
-
-    # Check for untested but supported configuration
-    untested_state, _, _ = _check_os_list(system, release, version, UNTESTED_OS_LIST)
-    if untested_state == OSListExitState.Supported:
+    elif untested_state == OSListExitState.Supported:
         exit_code = 2  # Exit Code 2 means a warning
         exit_message = (
             f"Your current configuration ({full_config}) is supported by this program, but untested. Consider using a "
             f"tested configuration ({_format_os_list(WORKING_OS_LIST)})"
         )
-
-    working_state, _, _ = _check_os_list(system, release, version, WORKING_OS_LIST)
-    if working_state == OSListExitState.SystemNotSupported:
+    elif working_state == OSListExitState.SystemNotSupported:
         exit_code = 1
         exit_message = (
             f"You are currently on {platform.system()}. Please run this on a supported OS "
