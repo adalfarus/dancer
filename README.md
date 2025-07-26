@@ -20,7 +20,7 @@ dancer is a simple, and user-friendly Python library for creating competent apps
 |--------------------------|--------------------------|-------|------------------------------|
 | Windows                  | 🟩                       | 🟩    | 🟩                           |
 | MacOS                    | 🟨                       | 🟩    | 🟨                           |
-| Linux (Ubuntu 22.04 LTS) | 🟩                       | 🟩    | 🟨                           |
+| Linux (Ubuntu 22.04 LTS) | 🟩                       | 🟩    | 🟩                           |
 
 ## Features
 
