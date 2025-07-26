@@ -128,7 +128,8 @@ def _configure() -> dict[str, str]:
     accumulated_logs = "Starting cloning of defaults ...\n"
     old_cwd = os.getcwd()
     install_dir = os.path.join(old_cwd, "default-config")
-    base_app_dir = _get_appdata_dir(f"{PROGRAM_NAME_NORMALIZED}_{VERSION}{VERSION_ADD}", "user")
+    # So we never have a relative dir, even if something fails
+    base_app_dir = os.path.abspath(_get_appdata_dir(f"{PROGRAM_NAME_NORMALIZED}_{VERSION}{VERSION_ADD}", "user"))
 
     if INDEV and os.path.exists(base_app_dir):  # Remove everything to simulate a fresh install
         if not INDEV_KEEP_RUNTIME_FILES:
