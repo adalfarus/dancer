@@ -15,6 +15,8 @@ import typing_extensions as _tx
 from src.dancer import start
 
 _DirectoryTree = dict[str, _ty.Union["_DirectoryTree", None]]
+PlatformVersionsType = dict[str, tuple[tuple[str, ...], tuple[str, ...]]]
+OSListType = dict[str, PlatformVersionsType]
 
 INDEV: bool
 INDEV_KEEP_RUNTIME_FILES: bool
@@ -23,9 +25,9 @@ PROGRAM_NAME: str
 VERSION: int
 VERSION_ADD: str
 PROGRAM_NAME_NORMALIZED: str
-WORKING_OS_LIST: dict[str, dict[str, tuple[str, ...]]]
-UNTESTED_OS_LIST: dict[str, dict[str, tuple[str, ...]]]
-INCOMPATIBLE_OS_LIST: dict[str, dict[str, tuple[str, ...]]]
+WORKING_OS_LIST: OSListType
+UNTESTED_OS_LIST: OSListType
+INCOMPATIBLE_OS_LIST: OSListType
 PY_LIST: list[tuple[int, int]]
 DIR_STRUCTURE: _DirectoryTree
 LOCAL_MODULE_LOCATIONS: list[str]
@@ -207,9 +209,9 @@ class AppConfig:
     PROGRAM_NAME_NORMALIZED: str
     VERSION: int
     VERSION_ADD: str
-    WORKING_OS_LIST: dict[str, dict[str, tuple[str, ...]]]
-    UNTESTED_OS_LIST: dict[str, dict[str, tuple[str, ...]]]
-    INCOMPATIBLE_OS_LIST: dict[str, dict[str, tuple[str, ...]]]
+    WORKING_OS_LIST: OSListType
+    UNTESTED_OS_LIST: OSListType
+    INCOMPATIBLE_OS_LIST: OSListType
     PY_LIST: list[tuple[int, int]]
     DIR_STRUCTURE: _DirectoryTree
     LOCAL_MODULE_LOCATIONS: list[str]
@@ -240,18 +242,12 @@ class OSListExitState(enum.Enum):
     ReleaseOrVersionNotSupported = 3
     Supported = 4
 
-PlatformVersionsType = dict[str, tuple[tuple[str, ...], tuple[str, ...]]]
-OSListType = dict[str, PlatformVersionsType]
-
-def _check_os_list(system: str, release: str, version: str, machine: str, os_list: OSListType) -> tuple[OSListExitState, str, str]:
+def _check_os_list(system: str, release: str, version: str, machine: str, os_list: OSListType) -> tuple[OSListExitState, str, str, str]:
     platform_versions: PlatformVersionsType | None = os_list.get(system, None)
 
     if platform_versions is None:
-        return OSListExitState.SystemNotSupported, "", ""
+        return OSListExitState.SystemNotSupported, "", "", ""
 
-    used_os_major_version: str | None = None
-    used_os_minor_version: str | None = None
-    used_machine: str | None = None
     for possible_major, (possible_minors, possible_machines) in platform_versions.items():
         if re.fullmatch(possible_major, release):
             minor_matches = [re.fullmatch(possible_minor, version) is not None for possible_minor in
@@ -262,16 +258,11 @@ def _check_os_list(system: str, release: str, version: str, machine: str, os_lis
                            possible_machines]
 
                 if any(machine_matches) or possible_machines == ("any",):
-                    used_os_minor_version = release
-                    used_os_major_version = version
-                    used_machine = machine
-                    break
+                    return OSListExitState.Supported, release, version, machine  # Currently, this is redundant, maybe not in the future
 
-    if used_os_major_version is None or used_os_minor_version is None or used_machine is None:
-        return OSListExitState.ReleaseOrVersionNotSupported, "", ""
-    return OSListExitState.Supported, used_os_major_version, used_os_minor_version  # Currently, this is redundant, maybe not in the future
+    return OSListExitState.ReleaseOrVersionNotSupported, "", "", ""
 
-def _format_os_list(os_list: dict[str, dict[str, tuple[str, ...]]]) -> str:
+def _format_os_list(os_list: OSListType) -> str:
     return ", ".join(os_list.keys())
 
 def check() -> RuntimeError | UserWarning | str:
@@ -286,13 +277,13 @@ def check() -> RuntimeError | UserWarning | str:
 
     #! Add .machine()
     system, release, version, machine = platform.system(), platform.release(), platform.version(), platform.machine()
-    full_config = f"{system} {release} {version} {machine}"
+    full_config = f"{system} {release} {version} ({machine})"
 
     # Check for incompatible configuration first
-    incompatible_state, _, _ = _check_os_list(system, release, version, machine, INCOMPATIBLE_OS_LIST)
+    incompatible_state, _, _, _ = _check_os_list(system, release, version, machine, INCOMPATIBLE_OS_LIST)
     # Check for untested but supported configuration
-    untested_state, _, _ = _check_os_list(system, release, version, machine, UNTESTED_OS_LIST)
-    working_state, _, _ = _check_os_list(system, release, version, machine, WORKING_OS_LIST)
+    untested_state, _, _, _ = _check_os_list(system, release, version, machine, UNTESTED_OS_LIST)
+    working_state, _, _, _ = _check_os_list(system, release, version, machine, WORKING_OS_LIST)
     if incompatible_state == OSListExitState.Supported:
         exit_code = 1  # Exit code 1 means an error
         exit_message = (
