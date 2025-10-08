@@ -4,6 +4,7 @@ from ._app import *
 from ._default_apps import *
 from ._default_modules import *
 from .config import do as _do
+from .system import diagnose_shutdown_blockers
 
 import typing as _ty
 import types as _ts
@@ -50,6 +51,10 @@ def late_init_package(pkg: str, app_info: AppConfig) -> _ts.ModuleType:
     start(pkg.App, pkg.parser, pkg.exit_codes)
     return pkg
 
-def package(pkg: _ts.ModuleType) -> None:
+def package(pkg_name: str) -> str:
+    pkg: _ts.ModuleType = __import__(pkg_name, globals(), locals(), [pkg_name])
     _do(app_info=pkg.app_info)
-    start(pkg.App, pkg.parser, pkg.exit_codes)
+    pkg_app: _ts.ModuleType = __import__(f"{pkg_name}.app", globals(), locals(), [pkg_name])
+    start(pkg_app.App, pkg.parser, pkg_app.exit_codes)
+    results: str = diagnose_shutdown_blockers(return_result=True)
+    return results

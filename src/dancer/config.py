@@ -12,11 +12,16 @@ import typing as _ty
 import types as _ts
 import typing_extensions as _tx
 
-from src.dancer import start
+@_dc(frozen=True)
+class OSEntry:
+    """Contains all info on the OS"""
+    major_version: str
+    minor_versions: tuple[str, ...]
+    machines: tuple[str, ...]
 
 _DirectoryTree = dict[str, _ty.Union["_DirectoryTree", None]]
 PlatformVersionsType = dict[str, tuple[tuple[str, ...], tuple[str, ...]]]
-OSListType = dict[str, PlatformVersionsType]
+OSListType = dict[str, list[OSEntry]]  # dict[str, PlatformVersionsType]
 
 INDEV: bool
 INDEV_KEEP_RUNTIME_FILES: bool
@@ -242,13 +247,21 @@ class OSListExitState(enum.Enum):
     ReleaseOrVersionNotSupported = 3
     Supported = 4
 
+#T = _ty.TypeVar("T")
+#def get_from_os_list(os_list: OSListType, key: str, base: T = None) -> OSEntry | T:
+#    for osl in os_list:
+#        if osl.os_name == key:
+#            return osl
+#    return base
+
 def _check_os_list(system: str, release: str, version: str, machine: str, os_list: OSListType) -> tuple[OSListExitState, str, str, str]:
-    platform_versions: PlatformVersionsType | None = os_list.get(system, None)
+    platform_versions: list[OSEntry] | None = os_list.get(system, None)
 
     if platform_versions is None:
         return OSListExitState.SystemNotSupported, "", "", ""
 
-    for possible_major, (possible_minors, possible_machines) in platform_versions.items():
+    for ose in platform_versions:
+        possible_major, (possible_minors, possible_machines) = ose.major_version, (ose.minor_versions, ose.machines)
         if re.fullmatch(possible_major, release):
             minor_matches = [re.fullmatch(possible_minor, version) is not None for possible_minor in
                        possible_minors]
@@ -291,12 +304,6 @@ def check() -> RuntimeError | UserWarning | str:
             f"configuration that is supported ({_format_os_list(UNTESTED_OS_LIST)} / "
             f"{_format_os_list(WORKING_OS_LIST)})"
         )
-    elif untested_state == OSListExitState.Supported:
-        exit_code = 2  # Exit Code 2 means a warning
-        exit_message = (
-            f"Your current configuration ({full_config}) is supported by this program, but untested. Consider using a "
-            f"tested configuration ({_format_os_list(WORKING_OS_LIST)})"
-        )
     elif working_state == OSListExitState.SystemNotSupported:
         exit_code = 1
         exit_message = (
@@ -312,6 +319,12 @@ def check() -> RuntimeError | UserWarning | str:
     elif working_state == OSListExitState.Supported:
         exit_code = 0
         exit_message = f"{full_config} with Python {sys.version_info[0]}.{sys.version_info[1]} is fully supported."
+    elif untested_state == OSListExitState.Supported:
+        exit_code = 2  # Exit Code 2 means a warning
+        exit_message = (
+            f"Your current configuration ({full_config}) is supported by this program, but untested. Consider using a "
+            f"tested configuration ({_format_os_list(WORKING_OS_LIST)})"
+        )
 
     if sys.version_info[:2] not in PY_LIST:
         py_versions_strs = [f"{major}.{minor}" for (major, minor) in PY_LIST]
