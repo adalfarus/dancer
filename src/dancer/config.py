@@ -9,6 +9,11 @@ import os
 import re
 
 import typing as _ty
+import types as _ts
+import typing_extensions as _tx
+
+from src.dancer import start
+
 _DirectoryTree = dict[str, _ty.Union["_DirectoryTree", None]]
 
 INDEV: bool
@@ -235,25 +240,34 @@ class OSListExitState(enum.Enum):
     ReleaseOrVersionNotSupported = 3
     Supported = 4
 
-def _check_os_list(system: str, release: str, version: str, os_list: dict[str, dict[str, tuple[str, ...]]]) -> tuple[OSListExitState, str, str]:
-    platform_versions: dict[str, tuple[str, ...]] | None = os_list.get(system, None)
+PlatformVersionsType = dict[str, tuple[tuple[str, ...], tuple[str, ...]]]
+OSListType = dict[str, PlatformVersionsType]
+
+def _check_os_list(system: str, release: str, version: str, machine: str, os_list: OSListType) -> tuple[OSListExitState, str, str]:
+    platform_versions: PlatformVersionsType | None = os_list.get(system, None)
 
     if platform_versions is None:
         return OSListExitState.SystemNotSupported, "", ""
 
     used_os_major_version: str | None = None
     used_os_minor_version: str | None = None
-    for possible_major, possible_minors in platform_versions.items():
+    used_machine: str | None = None
+    for possible_major, (possible_minors, possible_machines) in platform_versions.items():
         if re.fullmatch(possible_major, release):
-            matches = [re.fullmatch(possible_minor, version) is not None for possible_minor in
+            minor_matches = [re.fullmatch(possible_minor, version) is not None for possible_minor in
                        possible_minors]
 
-            if any(matches) or possible_minors == ("any",):
-                used_os_minor_version = release
-                used_os_major_version = version
-                break
+            if any(minor_matches) or possible_minors == ("any",):
+                machine_matches = [re.fullmatch(possible_machine, machine) is not None for possible_machine in
+                           possible_machines]
 
-    if used_os_major_version is None or used_os_minor_version is None:
+                if any(machine_matches) or possible_machines == ("any",):
+                    used_os_minor_version = release
+                    used_os_major_version = version
+                    used_machine = machine
+                    break
+
+    if used_os_major_version is None or used_os_minor_version is None or used_machine is None:
         return OSListExitState.ReleaseOrVersionNotSupported, "", ""
     return OSListExitState.Supported, used_os_major_version, used_os_minor_version  # Currently, this is redundant, maybe not in the future
 
@@ -270,14 +284,15 @@ def check() -> RuntimeError | UserWarning | str:
 
     exit_code, exit_message = 1, "An unknown error occurred"
 
-    system, release, version = platform.system(), platform.release(), platform.version()
-    full_config = f"{system} {release} {version}"
+    #! Add .machine()
+    system, release, version, machine = platform.system(), platform.release(), platform.version(), platform.machine()
+    full_config = f"{system} {release} {version} {machine}"
 
     # Check for incompatible configuration first
-    incompatible_state, _, _ = _check_os_list(system, release, version, INCOMPATIBLE_OS_LIST)
+    incompatible_state, _, _ = _check_os_list(system, release, version, machine, INCOMPATIBLE_OS_LIST)
     # Check for untested but supported configuration
-    untested_state, _, _ = _check_os_list(system, release, version, UNTESTED_OS_LIST)
-    working_state, _, _ = _check_os_list(system, release, version, WORKING_OS_LIST)
+    untested_state, _, _ = _check_os_list(system, release, version, machine, UNTESTED_OS_LIST)
+    working_state, _, _ = _check_os_list(system, release, version, machine, WORKING_OS_LIST)
     if incompatible_state == OSListExitState.Supported:
         exit_code = 1  # Exit code 1 means an error
         exit_message = (

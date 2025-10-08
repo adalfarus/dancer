@@ -3,10 +3,12 @@ from . import io, cli, concurrency, data, security, system, timing, web
 from ._app import *
 from ._default_apps import *
 from ._default_modules import *
+from .config import do as _do
 
 import typing as _ty
+import types as _ts
 
-__version__ = "0.0.0.1a9"
+__version__ = "0.0.1.0b0"
 
 from dataclasses import dataclass as _dc
 _DirectoryTree = dict[str, _ty.Union["_DirectoryTree", None]]
@@ -41,3 +43,13 @@ def get_global(key: str) -> _ty.Any | None:
 
 def configure(configuration: AppConfig):
     ...
+
+def late_init_package(pkg: str, app_info: AppConfig) -> _ts.ModuleType:
+    _do(app_info)
+    pkg = __import__(pkg, globals(), locals(), [pkg])
+    start(pkg.App, pkg.parser, pkg.exit_codes)
+    return pkg
+
+def package(pkg: _ts.ModuleType) -> None:
+    _do(app_info=pkg.app_info)
+    start(pkg.App, pkg.parser, pkg.exit_codes)
