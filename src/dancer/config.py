@@ -304,6 +304,15 @@ def check() -> RuntimeError | UserWarning | str:
             f"configuration that is supported ({_format_os_list(UNTESTED_OS_LIST)} / "
             f"{_format_os_list(WORKING_OS_LIST)})"
         )
+    elif working_state == OSListExitState.Supported:
+        exit_code = 0
+        exit_message = f"{full_config} with Python {sys.version_info[0]}.{sys.version_info[1]} is fully supported."
+    elif untested_state == OSListExitState.Supported:
+        exit_code = 2  # Exit Code 2 means a warning
+        exit_message = (
+            f"Your current configuration ({full_config}) is supported by this program, but untested. Consider using a "
+            f"tested configuration ({_format_os_list(WORKING_OS_LIST)})"
+        )
     elif working_state == OSListExitState.SystemNotSupported:
         exit_code = 1
         exit_message = (
@@ -315,15 +324,6 @@ def check() -> RuntimeError | UserWarning | str:
         exit_message = (
             f"You are currently on {full_config}. Use a supported release/version for {system} "
             f"({WORKING_OS_LIST[system]})."
-        )
-    elif working_state == OSListExitState.Supported:
-        exit_code = 0
-        exit_message = f"{full_config} with Python {sys.version_info[0]}.{sys.version_info[1]} is fully supported."
-    elif untested_state == OSListExitState.Supported:
-        exit_code = 2  # Exit Code 2 means a warning
-        exit_message = (
-            f"Your current configuration ({full_config}) is supported by this program, but untested. Consider using a "
-            f"tested configuration ({_format_os_list(WORKING_OS_LIST)})"
         )
 
     if sys.version_info[:2] not in PY_LIST:

@@ -9,7 +9,7 @@ from .system import diagnose_shutdown_blockers
 import typing as _ty
 import types as _ts
 
-__version__ = "0.0.1.0b0"
+__version__ = "0.0.1.0b1"
 
 from dataclasses import dataclass as _dc
 _DirectoryTree = dict[str, _ty.Union["_DirectoryTree", None]]
